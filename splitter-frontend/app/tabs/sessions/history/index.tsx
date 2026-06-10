@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Pressable, RefreshControl } from 'react-native';
 import { YStack, XStack, Text, ScrollView, View } from 'tamagui';
@@ -117,13 +117,16 @@ export default function SessionsHistoryScreen() {
   const refreshIfStale = useSessionsHistoryStore(state => state.refreshIfStale);
 
   const [refreshing, setRefreshing] = useState(false);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
+    if (hasFetched.current) return;
     if (loading) return;
+    hasFetched.current = true;
+
     if (!initialized || (currentLimit ?? 0) < HISTORY_LIMIT) {
       fetchHistory(HISTORY_LIMIT).catch(() => {});
     } else {
-      // если уже инициализировано — подёргаем обновление по давности
       refreshIfStale(15_000, HISTORY_LIMIT).catch(() => {});
     }
   }, [initialized, loading, currentLimit, fetchHistory, refreshIfStale]);

@@ -3,7 +3,7 @@ import type { Response } from "express";
 import { prisma } from "../config/prisma.js";
 import type { Prisma } from "@prisma/client";
 import { authenticateToken, type AuthRequest } from "../middleware/auth.js";
-import { parseReceipt } from "../services/receiptParser.js";
+import { parseReceipt, parseReceiptFromUrl } from "../services/receiptParser.js";
 
 const router = Router();
 
@@ -16,6 +16,113 @@ function normalizeCurrencyCode(input: unknown): string {
   const upper = trimmed.toUpperCase();
   return /^[A-Z]{3}$/.test(upper) ? upper : DEFAULT_CURRENCY_CODE;
 }
+
+/**
+ * @swagger
+ * /sessions/scan-qr:
+ *   post:
+ *     summary: Parse receipt from QR code URL (e.g. ofd.soliq.uz fiscal receipts)
+ *     tags: [Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [sessionName, language, url]
+ *             properties:
+ *               sessionName:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *                 example: uz
+ *               url:
+ *                 type: string
+ *                 example: "https://ofd.soliq.uz/epi?t=EP000000000669&r=1002092082&c=20260608063331&s=273305363255"
+ *     responses:
+ *       200:
+ *         description: Parsed receipt items from QR URL
+ */
+router.post(
+  "/scan-qr",
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+      const { sessionName, language, url } = req.body || {};
+
+      if (!sessionName || typeof sessionName !== "string") {
+        return res.status(400).json({ error: "sessionName required" });
+      }
+      if (!language || typeof language !== "string") {
+        return res.status(400).json({ error: "language required" });
+      }
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "url required" });
+      }
+
+      // Basic URL validation
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+
+      // Only allow http/https
+      if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+        return res.status(400).json({ error: "Only http/https URLs allowed" });
+      }
+
+      // Create session
+      const session = await prisma.session.create({
+        data: {
+          creatorId: req.user.id,
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+
+      const parseResult = await parseReceiptFromUrl({
+        language,
+        sessionName,
+        url,
+      });
+
+      return res.json({
+        sessionId: session.id,
+        sessionName,
+        language,
+        items: parseResult.items,
+        summary: parseResult.summary,
+        source: parseResult.source,
+        qrUrl: url,
+        ...(process.env.DEBUG_PARSE === "1" && parseResult.rawModelText
+          ? {
+              _debug: {
+                model: parseResult.model,
+                durationMs: parseResult.durationMs,
+              },
+            }
+          : {}),
+      });
+    } catch (err: any) {
+      console.error("POST /sessions/scan-qr error", err);
+      const message = err?.message || "Server error";
+      // Surface fetch/parse errors with 422
+      if (
+        message.includes("fetch") ||
+        message.includes("parse") ||
+        message.includes("empty")
+      ) {
+        return res.status(422).json({ error: message });
+      }
+      return res.status(500).json({ error: "Server error" });
+    }
+  }
+);
 
 /**
  * @swagger

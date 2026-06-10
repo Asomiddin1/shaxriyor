@@ -37,6 +37,7 @@ export type SessionHistoryPayload = {
   totals: {
     byItem: SessionHistoryTotalsByItem[];
     grandTotal: number;
+    currency?: string;
     byParticipant: SessionHistoryTotalsByParticipant[];
   };
   createdAt: string; // ISO
@@ -52,6 +53,7 @@ export interface SessionHistoryEntryRaw {
   sessionName: string;
   finalizedAt: string;
   grandTotal: number;
+  currency?: string;
   participantUniqueIds: string[];
   isCreator: boolean;
   payload: SessionHistoryPayload;
@@ -71,6 +73,7 @@ export interface SessionHistoryEntry {
   finalizedAt?: string;
   createdAt?: string;
   grandTotal: number;
+  currency?: string;
 
   participantUniqueIds: string[];
 
