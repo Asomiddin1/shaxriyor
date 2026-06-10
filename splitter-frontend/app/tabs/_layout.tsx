@@ -1,8 +1,8 @@
 // app/tabs/_layout.tsx
 
-import React, { useCallback, useEffect } from "react";
-import { Tabs, useRouter } from "expo-router";
-import { Pressable } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import { Tabs, useRouter, usePathname } from "expo-router";
+import { Pressable, Animated, Dimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { YStack, XStack, Text, View } from "tamagui";
 import { Home, Settings, Bell, ChevronLeft, Menu } from "@tamagui/lucide-icons";
@@ -13,6 +13,13 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAppStore } from "@/shared/lib/stores/app-store";
 import UserAvatar from "@/shared/ui/UserAvatar";
 import { useFriendsStore } from "@/features/friends/model/friends.store";
+import { CustomTabBar } from "@/shared/ui/CustomTabBar";
+import { DrawerSidebar } from "@/shared/ui/DrawerSidebar";
+import { useDrawerStore } from "@/shared/lib/stores/drawer-store";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const DRAWER_WIDTH = SCREEN_WIDTH * 0.8;
+const TAB_BAR_HEIGHT = 60; // CustomTabBar balandligi
 
 // --- Reusable Badge Component ---
 function DotBadge({ value }: { value?: number }) {
@@ -36,6 +43,86 @@ function DotBadge({ value }: { value?: number }) {
   );
 }
 
+// --- Animated Drawer Overlay ---
+function DrawerOverlay() {
+  const { isOpen, close } = useDrawerStore();
+  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isOpen) {
+      Animated.parallel([
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 200,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.spring(translateX, {
+          toValue: -DRAWER_WIDTH,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 200,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isOpen]);
+
+  return (
+    <>
+      {/* Dark overlay */}
+      <Animated.View
+        pointerEvents={isOpen ? "auto" : "none"}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)",
+          opacity: overlayOpacity,
+          zIndex: 998,
+        }}
+      >
+        <Pressable style={{ flex: 1 }} onPress={close} />
+      </Animated.View>
+
+      {/* Sidebar panel */}
+      <Animated.View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: DRAWER_WIDTH,
+          transform: [{ translateX }],
+          zIndex: 999,
+          shadowColor: "#000",
+          shadowOffset: { width: 2, height: 0 },
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+          elevation: 10,
+        }}
+      >
+        <DrawerSidebar onClose={close} />
+      </Animated.View>
+    </>
+  );
+}
+
 // --- Global Header for all Tabs ---
 function GlobalTabsHeader(props: any) {
   const insets = useSafeAreaInsets();
@@ -43,6 +130,7 @@ function GlobalTabsHeader(props: any) {
   const { user } = useAppStore();
   const fetchAll = useFriendsStore((s) => s.fetchAll);
   const { t } = useTranslation();
+  const openDrawer = useDrawerStore((s) => s.open);
   const routeName = props?.route?.name ?? "";
   const isMainPage = routeName === "index";
 
@@ -53,8 +141,8 @@ function GlobalTabsHeader(props: any) {
     routeName.startsWith("sessions");
 
   const onBackToHome = useCallback(
-    () => router.replace({ pathname: "/tabs" }),
-    [router],
+    () => router.replace("/tabs"),
+    [router]
   );
 
   useEffect(() => {
@@ -64,7 +152,7 @@ function GlobalTabsHeader(props: any) {
   useFocusEffect(
     useCallback(() => {
       fetchAll();
-    }, [fetchAll]),
+    }, [fetchAll])
   );
 
   useEffect(() => {
@@ -75,13 +163,13 @@ function GlobalTabsHeader(props: any) {
   }, [fetchAll]);
 
   const requestsCount = useFriendsStore(
-    (s) => s.requestsRaw?.incoming?.length ?? 0,
+    (s) => s.requestsRaw?.incoming?.length ?? 0
   );
   const displayName = user?.username || t("profile.labels.guest", "Guest");
   const userInitial = displayName.slice(0, 1).toUpperCase();
 
   const handleOpenProfile = useCallback(() => {
-    router.push({ pathname: "/tabs/profile" });
+    router.push("/tabs/profile");
   }, [router]);
 
   return (
@@ -94,7 +182,7 @@ function GlobalTabsHeader(props: any) {
       <XStack h={56} ai="center" px="$4" gap="$3">
         {/* Asosiy page da menu burger, boshqa page larda back button */}
         {isMainPage ? (
-          <Pressable onPress={() => {/* TODO: Open drawer menu */}} hitSlop={12}>
+          <Pressable onPress={openDrawer} hitSlop={12}>
             <Menu size={24} color="$gray11" />
           </Pressable>
         ) : showHomeShortcut ? (
@@ -117,7 +205,7 @@ function GlobalTabsHeader(props: any) {
           </Pressable>
         ) : null}
 
-        {/* Title — markazda, space-between yoki absolute bilan emas */}
+        {/* Title — markazda */}
         <Text
           fontSize={17}
           fontWeight="600"
@@ -129,7 +217,7 @@ function GlobalTabsHeader(props: any) {
           {props.options.title}
         </Text>
 
-        {/* Right actions — hech qachon siqilmaydi */}
+        {/* Right actions */}
         <XStack ai="center" gap="$3" flexShrink={0}>
           <Pressable
             onPress={() => router.push("/tabs/friends/requests")}
@@ -158,6 +246,8 @@ function GlobalTabsHeader(props: any) {
 export default function TabLayout() {
   const { user } = useAppStore();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
 
   const greetingName =
     user?.username || t("home.header.friendFallback", "friend");
@@ -179,107 +269,128 @@ export default function TabLayout() {
   const historyDetailsTitle = t("navigation.historyDetails", "Bill details");
 
   return (
-    <Tabs
-      screenOptions={{
-        header: (props) => <GlobalTabsHeader {...props} />,
-        tabBarStyle: { display: "none" },
-      }}
-    >
-      {/* Home & Settings tabs (hidden from bar) */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-          title: homeTitle,
-          tabBarLabel: homeLabel,
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+    <View flex={1} position="relative">
+      {/* Tabs Navigator */}
+      <Tabs
+        screenOptions={{
+          header: (props) => <GlobalTabsHeader {...props} />,
+          tabBarStyle: { display: "none" }, // Default tab barni yashiramiz
         }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null,
-          title: settingsTitle,
-          tabBarLabel: settingsTitle,
-          tabBarIcon: ({ color, size }) => (
-            <Settings size={size} color={color} />
-          ),
-        }}
-      />
+      >
+        {/* Home & Settings tabs */}
+        <Tabs.Screen
+          name="index"
+          options={{
+            href: null,
+            title: homeTitle,
+            tabBarLabel: homeLabel,
+            tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            href: null,
+            title: settingsTitle,
+            tabBarLabel: settingsTitle,
+            tabBarIcon: ({ color, size }) => (
+              <Settings size={size} color={color} />
+            ),
+          }}
+        />
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null,
-          title: profileTitle,
-        }}
-      />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            href: null,
+            title: profileTitle,
+          }}
+        />
 
-      {/* Friends stack (hidden) */}
-      <Tabs.Screen
-        name="friends/index"
-        options={{ href: null, title: t("friends.title", "Friends") }}
-      />
-      <Tabs.Screen
-        name="friends/search"
-        options={{ href: null, title: t("friends.search", "Search") }}
-      />
-      <Tabs.Screen
-        name="friends/requests"
-        options={{ href: null, title: t("friends.requests", "Requests") }}
-      />
+        {/* Friends stack */}
+        <Tabs.Screen
+          name="friends/index"
+          options={{ href: null, title: t("friends.title", "Friends") }}
+        />
+        <Tabs.Screen
+          name="friends/search"
+          options={{ href: null, title: t("friends.search", "Search") }}
+        />
+        <Tabs.Screen
+          name="friends/requests"
+          options={{ href: null, title: t("friends.requests", "Requests") }}
+        />
 
-      {/* HIDDEN: Groups */}
-      <Tabs.Screen
-        name="groups/index"
-        options={{ href: null, title: groupsTitle }}
-      />
-      <Tabs.Screen
-        name="groups/create"
-        options={{ href: null, title: newGroupTitle }}
-      />
-      <Tabs.Screen
-        name="groups/[groupId]"
-        options={{ href: null, title: groupDetailsTitle }}
-      />
+        {/* Groups */}
+        <Tabs.Screen
+          name="groups/index"
+          options={{ href: null, title: groupsTitle }}
+        />
+        <Tabs.Screen
+          name="groups/create"
+          options={{ href: null, title: newGroupTitle }}
+        />
+        <Tabs.Screen
+          name="groups/[groupId]"
+          options={{ href: null, title: groupDetailsTitle }}
+        />
 
-      <Tabs.Screen
-        name="scan-invite"
-        options={{ href: null, title: scanInviteTitle }}
-      />
-      <Tabs.Screen
-        name="friends/invite"
-        options={{ href: null, title: friendQrTitle }}
-      />
-      <Tabs.Screen
-        name="groups/invite"
-        options={{ href: null, title: groupQrTitle }}
-      />
+        <Tabs.Screen
+          name="scan-invite"
+          options={{ href: null, title: scanInviteTitle }}
+        />
+        <Tabs.Screen
+          name="friends/invite"
+          options={{ href: null, title: friendQrTitle }}
+        />
+        <Tabs.Screen
+          name="groups/invite"
+          options={{ href: null, title: groupQrTitle }}
+        />
 
-      <Tabs.Screen
-        name="scan-receipt"
-        options={{ href: null, title: scanReceiptTitle }}
-      />
-      <Tabs.Screen
-        name="sessions/participants"
-        options={{ href: null, title: participantsTitle }}
-      />
-      <Tabs.Screen
-        name="sessions/items-split"
-        options={{ href: null, title: itemsSplitTitle }}
-      />
-      <Tabs.Screen
-        name="sessions/finish"
-        options={{ href: null, title: finishTitle }}
-      />
-      <Tabs.Screen
-        name="sessions/history/index"
-        options={{ href: null, title: historyTitle }}
-      />
-      <Tabs.Screen
-        name="sessions/history/[historyId]"
-        options={{ href: null, title: historyDetailsTitle }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="scan-receipt"
+          options={{ href: null, title: scanReceiptTitle }}
+        />
+        <Tabs.Screen
+          name="sessions/participants"
+          options={{ href: null, title: participantsTitle }}
+        />
+        <Tabs.Screen
+          name="sessions/items-split"
+          options={{ href: null, title: itemsSplitTitle }}
+        />
+        <Tabs.Screen
+          name="sessions/finish"
+          options={{ href: null, title: finishTitle }}
+        />
+        <Tabs.Screen
+          name="sessions/history/index"
+          options={{ href: null, title: historyTitle }}
+        />
+        <Tabs.Screen
+          name="sessions/history/[historyId]"
+          options={{ href: null, title: historyDetailsTitle }}
+        />
+      </Tabs>
+
+      {/* Custom Tab Bar — pastda, safe area ichida */}
+      <View
+        position="absolute"
+        bottom={0}
+        left={0}
+        right={0}
+        pb={insets.bottom}
+        bg="$background"
+        borderTopWidth={0.5}
+        borderTopColor="$borderColor"
+        zIndex={997}
+      >
+        <CustomTabBar />
+      </View>
+
+      {/* Drawer overlay — eng ustida */}
+      <DrawerOverlay />
+    </View>
   );
 }
