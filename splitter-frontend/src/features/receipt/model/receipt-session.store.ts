@@ -5,6 +5,7 @@ import type {
   FinalizeTotalsByItem,
   FinalizeTotalsByParticipant,
   ParseReceiptRequest,
+  ParseReceiptFromQrRequest,
   ParseReceiptResponse,
   ReceiptParticipant,
   ReceiptSummary,
@@ -78,6 +79,7 @@ interface ReceiptSessionStore {
   setLastFinishPayload: (payload?: FinishPayload) => void;
 
   parseReceipt: (payload: ParseReceiptRequest) => Promise<ParseReceiptResponse>;
+  parseReceiptFromQr: (payload: ParseReceiptFromQrRequest) => Promise<ParseReceiptResponse>;
   finalizeSession: () => Promise<FinalizeReceiptResponse>;
   reset: () => void;
 }
@@ -162,6 +164,48 @@ export const useReceiptSessionStore = create<ReceiptSessionStore>((set, get) => 
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to parse receipt';
+      set({ parsing: false, parseError: message });
+      throw error;
+    }
+  },
+
+  parseReceiptFromQr: async (payload) => {
+    set({ parsing: true, parseError: undefined });
+    try {
+      const response = await ReceiptApi.parseFromQr(payload);
+      const splitItems: ReceiptSplitItem[] = response.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        totalPrice: item.totalPrice,
+        kind: item.kind,
+        splitMode: item.quantity > 1 ? 'count' : 'equal',
+        assignedTo: [],
+        perPersonCount: {},
+      }));
+
+      const detectedCurrency = response.summary?.currency || 'UZS';
+
+      set({
+        parsing: false,
+        parseError: undefined,
+        session: {
+          sessionId: response.sessionId,
+          sessionName: response.sessionName,
+          language: response.language,
+          summary: response.summary,
+        },
+        items: splitItems,
+        participants: [],
+        currency: detectedCurrency,
+        finalized: undefined,
+        finalizeError: undefined,
+      });
+
+      return response;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to parse receipt from QR';
       set({ parsing: false, parseError: message });
       throw error;
     }

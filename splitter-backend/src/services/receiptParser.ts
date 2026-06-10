@@ -40,6 +40,12 @@ export interface ParseOptions {
   imageBase64: string; // no data: prefix, raw base64
 }
 
+export interface ParseFromUrlOptions {
+  language: string;
+  sessionName: string;
+  url: string; // QR code URL e.g. https://ofd.soliq.uz/epi?t=...
+}
+
 // Environment-driven configuration
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || "v1";
@@ -471,4 +477,212 @@ async function generateViaRest(
     }
   }
   throw lastErr || new Error("All versions failed");
+}
+
+// ---------------------------------------------------------------------------
+// QR URL-based receipt parsing (e.g. ofd.soliq.uz fiscal receipts)
+// ---------------------------------------------------------------------------
+
+const QR_EXTRACTION_INSTRUCTIONS = `You are a receipt parser. The user provides raw HTML or text content from a fiscal receipt webpage (e.g. Uzbekistan OFD/soliq.uz).
+Extract all purchased items and return ONLY valid JSON with this shape:
+{
+  "items": [
+    { "id": "string", "name": "string", "unitPrice": number, "quantity": number, "totalPrice": number, "kind": "fee|tip|discount|item|other|null" }
+  ],
+  "summary": { "grandTotal": number, "currency": "ISO_4217" }
+}
+Rules:
+- Numbers must use dot as decimal separator.
+- For Uzbekistan receipts currency is typically UZS (Uzbek soum). Amounts may be in tiyins (1 soum = 100 tiyins) — if values look like large integers (e.g. 13156000), divide by 100 to get soums.
+- id: generate short stable IDs like "1", "2"...
+- quantity >= 1.
+- totalPrice = unitPrice * quantity.
+- Include service/tips/fees as separate items with kind set.
+- grandTotal = sum of item totalPrice values.
+- If the page has no recognizable receipt data, return { "items": [], "summary": { "grandTotal": 0, "currency": "UZS" } }.`;
+
+async function generateTextViaRest(
+  model: string,
+  prompt: string,
+  userText: string
+): Promise<string> {
+  const order = ["v1"];
+  let lastErr: any = null;
+  for (const ver of order) {
+    const url = `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${encodeURIComponent(
+      GEMINI_API_KEY as string
+    )}`;
+    const body = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `${prompt}\n\nRECEIPT CONTENT:\n${userText}\n\nOUTPUT ONLY RAW JSON. NO MARKDOWN.`,
+            },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0.1 },
+    };
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        let errorPayload: any = undefined;
+        try {
+          const txt = await resp.text();
+          if (txt) {
+            try {
+              errorPayload = JSON.parse(txt);
+            } catch {
+              errorPayload = { raw: txt.slice(0, 300) };
+            }
+          }
+        } catch {}
+        lastErr = Object.assign(
+          new Error(
+            `HTTP ${resp.status} ${errorPayload?.error?.message || resp.statusText}`
+          ),
+          { status: resp.status, apiError: errorPayload }
+        );
+        continue;
+      }
+      const json = await resp.json();
+      const texts: string[] = [];
+      if (Array.isArray(json.candidates)) {
+        for (const cand of json.candidates) {
+          const parts = cand?.content?.parts || cand?.parts || [];
+          for (const p of parts) if (p.text) texts.push(p.text);
+        }
+      }
+      return texts.join("\n").trim();
+    } catch (e) {
+      lastErr = e;
+      continue;
+    }
+  }
+  throw lastErr || new Error("All versions failed");
+}
+
+/** Strip HTML tags and collapse whitespace for cleaner LLM input */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 8000); // limit to avoid token overflow
+}
+
+export async function parseReceiptFromUrl(
+  options: ParseFromUrlOptions
+): Promise<ParseResult> {
+  if (!GEMINI_API_KEY) {
+    if (DEBUG_PARSE)
+      console.warn("[parseReceiptFromUrl] Using mock: GEMINI_API_KEY not set");
+    return mockParse();
+  }
+
+  // 1. Fetch the receipt page
+  let pageText: string;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    const resp = await fetch(options.url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; ReceiptBot/1.0; +https://splitter.app)",
+        Accept: "text/html,application/xhtml+xml,application/json,*/*",
+        "Accept-Language": "uz,ru;q=0.9,en;q=0.8",
+      },
+    });
+    clearTimeout(timer);
+
+    const contentType = resp.headers.get("content-type") || "";
+    const raw = await resp.text();
+
+    if (DEBUG_PARSE) {
+      console.log(
+        `[parseReceiptFromUrl] fetched url=${options.url} status=${resp.status} ct=${contentType} len=${raw.length}`
+      );
+    }
+
+    if (!resp.ok) {
+      throw new Error(`Receipt page returned HTTP ${resp.status}`);
+    }
+
+    // If JSON response — pass as-is; if HTML — strip tags
+    pageText = contentType.includes("json") ? raw : stripHtml(raw);
+  } catch (err: any) {
+    throw new Error(`Failed to fetch receipt URL: ${err?.message || err}`);
+  }
+
+  if (!pageText || pageText.length < 20) {
+    throw new Error("Receipt page returned empty content");
+  }
+
+  // 2. Parse with Gemini
+  const dynamicCandidates = cachedModel
+    ? [
+        cachedModel.model,
+        ...MODEL_CANDIDATES.filter((m) => m !== cachedModel!.model),
+      ]
+    : MODEL_CANDIDATES.slice();
+
+  const prompt = `${QR_EXTRACTION_INSTRUCTIONS}\nLanguage context: ${options.language}\nSession Name: ${options.sessionName}`;
+  let lastError: unknown = null;
+
+  for (const modelName of dynamicCandidates) {
+    const start = Date.now();
+    try {
+      const text = await generateTextViaRest(modelName, prompt, pageText);
+      const parsed = safeParseJson(text);
+      if (!parsed.ok || !parsed.data) {
+        if (DEBUG_PARSE) {
+          console.warn(
+            `[parseReceiptFromUrl] Model ${modelName} returned non-parseable JSON. Snippet:`,
+            text.slice(0, 200)
+          );
+        }
+        continue;
+      }
+      const durationMs = Date.now() - start;
+      if (!cachedModel) {
+        cachedModel = { model: modelName, version: "v1" };
+      }
+      return {
+        ...parsed.data,
+        model: modelName,
+        durationMs,
+        source: "gemini",
+      };
+    } catch (err) {
+      lastError = err;
+      if (DEBUG_PARSE)
+        console.warn(
+          `[parseReceiptFromUrl] Error with model ${modelName}:`,
+          err
+        );
+      continue;
+    }
+  }
+
+  if (DEBUG_PARSE)
+    console.error(
+      "[parseReceiptFromUrl] All models failed, last error:",
+      lastError
+    );
+  throw lastError || new Error("Failed to parse receipt from URL");
 }

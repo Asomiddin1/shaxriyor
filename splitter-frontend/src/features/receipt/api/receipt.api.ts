@@ -5,6 +5,12 @@ export type ReceiptImagePayload = {
   data: string; // base64 without data URI prefix
 };
 
+export interface ParseReceiptFromQrRequest {
+  sessionName: string;
+  language: string;
+  url: string;
+}
+
 export interface ParseReceiptRequest {
   sessionName: string;
   language: string;
@@ -102,6 +108,16 @@ const normalizeError = (error: unknown): Error => {
 };
 
 export const ReceiptApi = {
+  async parseFromQr(payload: ParseReceiptFromQrRequest): Promise<ParseReceiptResponse> {
+    try {
+      const { data } = await apiClient.post<ParseReceiptResponse>('/sessions/scan-qr', payload);
+      return data;
+    } catch (error) {
+      console.error('[API] Error (parseFromQr):', error);
+      throw normalizeError(error);
+    }
+  },
+
   async parse(payload: ParseReceiptRequest): Promise<ParseReceiptResponse> {
     try {
       // console.log('[API] POST /sessions/scan');
