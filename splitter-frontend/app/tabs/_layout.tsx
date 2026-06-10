@@ -5,7 +5,7 @@ import { Tabs, useRouter } from "expo-router";
 import { Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { YStack, XStack, Text, View } from "tamagui";
-import { Home, Settings, Bell, ChevronLeft } from "@tamagui/lucide-icons";
+import { Home, Settings, Bell, ChevronLeft, Menu } from "@tamagui/lucide-icons";
 import { useTranslation } from "react-i18next";
 import { AppState } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
@@ -44,6 +44,7 @@ function GlobalTabsHeader(props: any) {
   const fetchAll = useFriendsStore((s) => s.fetchAll);
   const { t } = useTranslation();
   const routeName = props?.route?.name ?? "";
+  const isMainPage = routeName === "index";
 
   const showHomeShortcut =
     routeName === "profile" ||
@@ -91,8 +92,12 @@ function GlobalTabsHeader(props: any) {
       borderBottomColor="$borderColor"
     >
       <XStack h={56} ai="center" px="$4" gap="$3">
-        {/* Back pill — flex:0 shrink yo'q, hech qachon siqilmaydi */}
-        {showHomeShortcut && (
+        {/* Asosiy page da menu burger, boshqa page larda back button */}
+        {isMainPage ? (
+          <Pressable onPress={() => {/* TODO: Open drawer menu */}} hitSlop={12}>
+            <Menu size={24} color="$gray11" />
+          </Pressable>
+        ) : showHomeShortcut ? (
           <Pressable onPress={onBackToHome} hitSlop={12}>
             <XStack
               ai="center"
@@ -110,16 +115,16 @@ function GlobalTabsHeader(props: any) {
               </Text>
             </XStack>
           </Pressable>
-        )}
+        ) : null}
 
-        {/* Title — flex:1 bilan qolgan bo'shliqni egallaydi va truncate qiladi */}
+        {/* Title — markazda, space-between yoki absolute bilan emas */}
         <Text
           fontSize={17}
           fontWeight="600"
           numberOfLines={1}
-          flex={1} // ← asosiy tuzatish
+          flex={1}
+          textAlign="center"
           color="$color12"
-          // miw={150} olib tashlandi ← muammo shu edi
         >
           {props.options.title}
         </Text>
