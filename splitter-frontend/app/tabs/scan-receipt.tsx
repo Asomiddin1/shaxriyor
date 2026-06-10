@@ -4,8 +4,9 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { YStack, XStack, Button, Paragraph, Input, Text, Spinner } from 'tamagui';
-import { ChevronLeft, AlertTriangle, Camera as CameraIcon } from '@tamagui/lucide-icons';
+import { ChevronLeft, AlertTriangle, Camera as CameraIcon, Image as GalleryIcon } from '@tamagui/lucide-icons';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 
 import {
   useReceiptSessionStore,
@@ -136,6 +137,67 @@ export default function ScanReceiptScreen() {
     }
   }, [cameraRef, parsing, sessionName, setSessionNameStore, setCapture, parseReceipt, language, router]);
 
+  const handlePickFromGallery = useCallback(async () => {
+    if (parsing) return;
+
+    try {
+      setLocalError(null);
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        base64: false,
+        allowsEditing: false,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      const asset = result.assets[0];
+
+      const targetWidth = asset.width ? Math.min(asset.width, 1280) : undefined;
+      const manipResult = await manipulateAsync(
+        asset.uri,
+        targetWidth ? [{ resize: { width: targetWidth } }] : [],
+        { compress: 0.45, format: SaveFormat.JPEG, base64: true }
+      );
+
+      if (!manipResult?.base64) {
+        throw new Error('Failed to prepare the selected image for upload.');
+      }
+
+      if (__DEV__) {
+        const base64SizeKb = (manipResult.base64.length * 3) / 4 / 1024;
+        console.log('[ReceiptScan:Gallery] resized image ~KB:', base64SizeKb.toFixed(1), 'dims:', manipResult.width, 'x', manipResult.height);
+      }
+
+      const preparedName = sessionName.trim() || getDefaultSessionName();
+      const capture: CapturedReceiptImage = {
+        uri: manipResult.uri ?? asset.uri,
+        base64: manipResult.base64,
+        mimeType: 'image/jpeg',
+        width: manipResult.width ?? asset.width,
+        height: manipResult.height ?? asset.height,
+      };
+
+      setSessionNameStore(preparedName);
+      setCapture(capture);
+
+      await parseReceipt({
+        sessionName: preparedName,
+        language,
+        image: {
+          data: capture.base64,
+          mimeType: capture.mimeType,
+        },
+      });
+
+      router.push('/tabs/sessions/participants');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Something went wrong while processing the image';
+      setLocalError(message);
+    }
+  }, [parsing, sessionName, setSessionNameStore, setCapture, parseReceipt, language, router]);
+
   const useMock = useCallback(() => {
     router.push({
       pathname: '/tabs/sessions/participants',
@@ -249,12 +311,23 @@ export default function ScanReceiptScreen() {
             <Button
               size="$3"
               borderRadius="$3"
+              theme="gray"
+              onPress={handlePickFromGallery}
+              disabled={parsing}
+              opacity={parsing ? 0.6 : 1}
+              icon={<GalleryIcon size={18} color="white" />}
+            >
+              Gallery
+            </Button>
+            <Button
+              size="$3"
+              borderRadius="$3"
               theme="active"
               onPress={handleParse}
               disabled={disableAction}
               icon={parsing ? undefined : <CameraIcon size={18} color="white" />}
             >
-              {parsing ? 'Processing...' : 'Scan receipt'}
+              {parsing ? 'Processing...' : 'Scan'}
             </Button>
           </XStack>
 
