@@ -26,6 +26,7 @@
     "axios": "^1.11.0",
     "babel-plugin-module-resolver": "^5.0.2",
     "expo": "54.0.21",
+    "expo-blur": "~15.0.8",
     "expo-build-properties": "^1.0.9",
     "expo-camera": "~17.0.8",
     "expo-clipboard": "~8.0.7",

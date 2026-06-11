@@ -176,6 +176,14 @@
         "ja": "Yapon tili",
         "uz": "O'zbek tili"
       }
+    },
+    "appearance": {
+      "title": "Ko'rinish",
+      "description": "Yorug' va qorong'i mavzu o'rtasida almashtiring.",
+      "light": "Yorug' rejim",
+      "dark": "Qorong'i rejim",
+      "switchLight": "Yorug'",
+      "switchDark": "Qorong'i"
     }
   }
 }

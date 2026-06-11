@@ -6,7 +6,7 @@
   "features": {
     "scan": "Scan",
     "scanDesc": "Take photos of your receipts",
-    "split": "Split Bills", 
+    "split": "Split Bills",
     "splitDesc": "Divide costs with friends",
     "calculate": "Calculate",
     "calculateDesc": "Know who owes what"
@@ -189,6 +189,14 @@
         "ja": "Japanese",
         "uz": "Uzbek"
       }
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Switch between light and dark theme.",
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switchLight": "Light",
+      "switchDark": "Dark"
     }
   }
 }

@@ -46,7 +46,7 @@ function AvatarGroup({ participants }: { participants: SessionHistoryParticipant
           br={14}
           backgroundColor="#CBD5F5"
           borderWidth={2}
-          borderColor="white"
+          borderColor="$background"
           ml={shown.length === 0 ? 0 : -8}
           ai="center"
           jc="center"
@@ -80,9 +80,9 @@ function HistoryCard({
         h={110}
         br={12}
         borderWidth={1}
-        borderColor="#E4E7EB"
+        borderColor="$borderColor"
         p="$3"
-        backgroundColor="white"
+        backgroundColor="$gray2"
       >
         <XStack jc="space-between" ai="center">
           <YStack>

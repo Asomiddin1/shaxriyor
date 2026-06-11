@@ -31,6 +31,7 @@ interface AppStore {
   logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
   setTheme: (theme: 'light' | 'dark') => void;
+  toggleTheme: () => void;
   setLanguage: (language: LanguageCode) => void;
 }
 
@@ -99,6 +100,7 @@ export const useAppStore = create<AppStore>()(
 
       // App settings actions
       setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
       setLanguage: (language) => set({ language }),
     }),
     {

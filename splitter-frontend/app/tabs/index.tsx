@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { YStack, XStack, Text, View } from 'tamagui';
+import { YStack, XStack, Text, View, useTheme } from 'tamagui';
 import {
   ScanLine,
   Users,
@@ -99,7 +99,7 @@ function computeStats(sessions: SessionHistoryEntry[]): Stats {
 
   for (const s of sessions) {
     const c = s.currency || s.payload?.totals?.currency || DEFAULT_CURRENCY;
-    if (c !== currency) continue; // only count dominant currency
+    if (c !== currency) continue;
     const amount = s.grandTotal ?? 0;
     totalSpent += amount;
     const ts = s.finalizedAt ? new Date(s.finalizedAt).getTime() : 0;
@@ -121,14 +121,7 @@ function computeStats(sessions: SessionHistoryEntry[]): Stats {
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-/** Main balance card — gradient, bank style */
-function BalanceCard({
-  stats,
-  username,
-}: {
-  stats: Stats;
-  username: string;
-}) {
+function BalanceCard({ stats, username }: { stats: Stats; username: string }) {
   return (
     <View style={S.cardWrap} mx="$4" mb="$4">
       <LinearGradient
@@ -137,11 +130,9 @@ function BalanceCard({
         end={{ x: 1, y: 1 }}
         style={S.card}
       >
-        {/* Decorative circles */}
         <RNView style={S.circle1} />
         <RNView style={S.circle2} />
 
-        {/* Top row */}
         <XStack jc="space-between" ai="center" mb="$2">
           <YStack>
             <Text color="rgba(255,255,255,0.6)" fontSize={11} fontWeight="500" letterSpacing={1}>
@@ -168,36 +159,22 @@ function BalanceCard({
           </View>
         </XStack>
 
-        {/* Divider */}
         <View h={0.5} backgroundColor="rgba(255,255,255,0.12)" my="$2" />
 
-        {/* Bottom row — 3 stats */}
         <XStack jc="space-between" ai="center">
           <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">
-              BILLS
-            </Text>
-            <Text color="white" fontSize={18} fontWeight="700" mt={2}>
-              {stats.totalBills}
-            </Text>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">BILLS</Text>
+            <Text color="white" fontSize={18} fontWeight="700" mt={2}>{stats.totalBills}</Text>
           </YStack>
           <View w={0.5} h={32} backgroundColor="rgba(255,255,255,0.12)" />
           <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">
-              AVG BILL
-            </Text>
-            <Text color="white" fontSize={18} fontWeight="700" mt={2}>
-              {fmtShort(stats.avgBill)}
-            </Text>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">AVG BILL</Text>
+            <Text color="white" fontSize={18} fontWeight="700" mt={2}>{fmtShort(stats.avgBill)}</Text>
           </YStack>
           <View w={0.5} h={32} backgroundColor="rgba(255,255,255,0.12)" />
           <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">
-              THIS MONTH
-            </Text>
-            <Text color="#2ECC71" fontSize={18} fontWeight="700" mt={2}>
-              {fmtShort(stats.thisMonthSpent)}
-            </Text>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">THIS MONTH</Text>
+            <Text color="#2ECC71" fontSize={18} fontWeight="700" mt={2}>{fmtShort(stats.thisMonthSpent)}</Text>
           </YStack>
         </XStack>
       </LinearGradient>
@@ -205,108 +182,6 @@ function BalanceCard({
   );
 }
 
-/** Month stats mini cards */
-function MonthCard({
-  thisMonthSpent,
-  thisMonthBills,
-  currency,
-}: {
-  thisMonthSpent: number;
-  thisMonthBills: number;
-  currency: string;
-}) {
-  const now = new Date();
-  const monthName = now.toLocaleString('en', { month: 'long' });
-
-  return (
-    <XStack mx="$4" gap="$3" mb="$4">
-      <YStack
-        f={1}
-        br={16}
-        p="$3"
-        backgroundColor="$gray2"
-        borderWidth={1}
-        borderColor="$gray4"
-        gap="$1"
-      >
-        <XStack ai="center" gap="$2">
-          <View w={32} h={32} br={10} ai="center" jc="center" backgroundColor="#E8F8EF">
-            <TrendingUp size={16} color="#2ECC71" />
-          </View>
-          <Text fontSize={12} color="$gray10" fontWeight="500">
-            {monthName}
-          </Text>
-        </XStack>
-        <Text fontSize={20} fontWeight="800" color="$color12" mt="$1">
-          {fmtShort(thisMonthSpent)}
-          <Text fontSize={11} fontWeight="500" color="$gray9"> {currency}</Text>
-        </Text>
-        <Text fontSize={11} color="$gray9">
-          {thisMonthBills} bill{thisMonthBills !== 1 ? 's' : ''} this month
-        </Text>
-      </YStack>
-
-      <YStack
-        f={1}
-        br={16}
-        p="$3"
-        backgroundColor="$gray2"
-        borderWidth={1}
-        borderColor="$gray4"
-        gap="$1"
-      >
-        <XStack ai="center" gap="$2">
-          <View w={32} h={32} br={10} ai="center" jc="center" backgroundColor="#EEF2FF">
-            <Clock size={16} color="#6366F1" />
-          </View>
-          <Text fontSize={12} color="$gray10" fontWeight="500">
-            Last bill
-          </Text>
-        </XStack>
-        <Text fontSize={13} fontWeight="700" color="$color12" mt="$1" numberOfLines={1}>
-          {/* handled in parent */}
-        </Text>
-      </YStack>
-    </XStack>
-  );
-}
-
-/** Quick action pill button */
-function QuickAction({
-  icon,
-  label,
-  onPress,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onPress: () => void;
-  accent?: string;
-}) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}>
-      <YStack ai="center" gap="$1.5" w={72}>
-        <View
-          w={52}
-          h={52}
-          br={16}
-          ai="center"
-          jc="center"
-          backgroundColor={accent ? `${accent}18` : '$gray3'}
-          borderWidth={1}
-          borderColor={accent ? `${accent}30` : '$gray5'}
-        >
-          {icon}
-        </View>
-        <Text fontSize={11} fontWeight="500" color="$gray11" textAlign="center" numberOfLines={1}>
-          {label}
-        </Text>
-      </YStack>
-    </Pressable>
-  );
-}
-
-/** Single transaction row */
 function TxRow({
   bill,
   onPress,
@@ -326,47 +201,24 @@ function TxRow({
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-      <XStack
-        px="$4"
-        py="$3"
-        ai="center"
-        gap="$3"
-        borderBottomWidth={0.5}
-        borderBottomColor="$gray4"
-      >
-        {/* Icon */}
-        <View
-          w={44}
-          h={44}
-          br={14}
-          ai="center"
-          jc="center"
-          backgroundColor={isCreator ? '#E8F8EF' : '#EEF2FF'}
-        >
+      <XStack px="$4" py="$3" ai="center" gap="$3" borderBottomWidth={0.5} borderBottomColor="$gray4">
+        <View w={44} h={44} br={14} ai="center" jc="center" backgroundColor={isCreator ? '#E8F8EF' : '#EEF2FF'}>
           <ReceiptText size={20} color={isCreator ? '#2ECC71' : '#6366F1'} />
         </View>
-
-        {/* Title + meta */}
         <YStack f={1} gap={2}>
           <Text fontSize={14} fontWeight="600" color="$color12" numberOfLines={1}>
             {bill.sessionName || 'Bill'}
           </Text>
           <XStack ai="center" gap="$1.5">
-            <Text fontSize={11} color="$gray9">
-              {date}
-            </Text>
+            <Text fontSize={11} color="$gray9">{date}</Text>
             {participantCount > 0 && (
               <>
                 <Text fontSize={11} color="$gray6">·</Text>
-                <Text fontSize={11} color="$gray9">
-                  {participantCount} people
-                </Text>
+                <Text fontSize={11} color="$gray9">{participantCount} people</Text>
               </>
             )}
           </XStack>
         </YStack>
-
-        {/* Amount */}
         <YStack ai="flex-end" gap={2}>
           <XStack ai="center" gap={3}>
             {isCreator ? (
@@ -374,17 +226,11 @@ function TxRow({
             ) : (
               <ArrowDownLeft size={13} color="#6366F1" />
             )}
-            <Text
-              fontSize={15}
-              fontWeight="700"
-              color={isCreator ? '#2ECC71' : '#6366F1'}
-            >
+            <Text fontSize={15} fontWeight="700" color={isCreator ? '#2ECC71' : '#6366F1'}>
               {fmtShort(amount)}
             </Text>
           </XStack>
-          <Text fontSize={10} color="$gray8" fontWeight="500">
-            {c}
-          </Text>
+          <Text fontSize={10} color="$gray8" fontWeight="500">{c}</Text>
         </YStack>
       </XStack>
     </Pressable>
@@ -397,6 +243,8 @@ export default function HomePage() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
   const { user } = useAppStore();
+  const themeColors = useTheme();
+  const screenBg = themeColors.background?.val ?? '#ffffff';
 
   const sessions = useSessionsHistoryStore((s) => s.sessions);
   const loading = useSessionsHistoryStore((s) => s.loading);
@@ -439,7 +287,6 @@ export default function HomePage() {
   const locale = i18n.language ?? 'en';
   const username = user?.username ?? 'there';
 
-  // group transactions by date label
   const grouped = useMemo(() => {
     const today = new Date();
     const yesterday = new Date(today);
@@ -469,177 +316,137 @@ export default function HomePage() {
   }, [sessions]);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: 'white' }}
-      contentContainerStyle={{ paddingBottom: 32 }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2ECC71" />
-      }
-    >
-      {/* ── Balance card ── */}
-      <View pt="$4">
-        <BalanceCard stats={stats} username={username} />
-      </View>
-
-      {/* ── Quick actions ── */}
-      <XStack px="$4" mb="$5" jc="space-between">
-        <QuickAction
-          icon={<ScanLine size={22} color="#2ECC71" />}
-          label="Scan"
-          accent="#2ECC71"
-          onPress={() => router.push('/tabs/scan-receipt')}
-        />
-        <QuickAction
-          icon={<Users size={22} color="#6366F1" />}
-          label="Friends"
-          accent="#6366F1"
-          onPress={() => router.push('/tabs/friends')}
-        />
-        <QuickAction
-          icon={<FolderOpen size={22} color="#F59E0B" />}
-          label="Groups"
-          accent="#F59E0B"
-          onPress={() => router.push('/tabs/groups')}
-        />
-        <QuickAction
-          icon={<Clock size={22} color="#EF4444" />}
-          label="History"
-          accent="#EF4444"
-          onPress={() => router.push('/tabs/sessions/history/')}
-        />
-      </XStack>
-
-      {/* ── This month summary strip ── */}
-      {stats.thisMonthBills > 0 && (
-        <XStack
-          mx="$4"
-          mb="$4"
-          p="$3"
-          br={16}
-          backgroundColor="#F0FDF6"
-          borderWidth={1}
-          borderColor="#BBEED0"
-          ai="center"
-          gap="$3"
-        >
-          <View w={36} h={36} br={12} ai="center" jc="center" backgroundColor="#2ECC71">
-            <TrendingUp size={18} color="white" />
-          </View>
-          <YStack f={1}>
-            <Text fontSize={13} fontWeight="700" color="#166534">
-              {fmt(stats.thisMonthSpent, stats.currency, locale)} this month
-            </Text>
-            <Text fontSize={11} color="#4ADE80">
-              {stats.thisMonthBills} bill{stats.thisMonthBills !== 1 ? 's' : ''} split
-            </Text>
-          </YStack>
-        </XStack>
-      )}
-
-      {/* ── Transactions ── */}
-      <View mx="$4" mb="$2">
-        <XStack ai="center" jc="space-between">
-          <Text fontSize={17} fontWeight="700" color="$color12">
-            Transactions
-          </Text>
-          <Pressable onPress={() => router.push('/tabs/sessions/history/')}>
-            <XStack ai="center" gap={4}>
-              <Text fontSize={13} color="#2ECC71" fontWeight="600">
-                See all
-              </Text>
-              <ChevronRight size={14} color="#2ECC71" />
-            </XStack>
-          </Pressable>
-        </XStack>
-      </View>
-
-      {/* Loading state */}
-      {loading && !refreshing && (
-        <YStack ai="center" py="$6">
-          <Text color="$gray9" fontSize={14}>Loading transactions...</Text>
-        </YStack>
-      )}
-
-      {/* Empty state */}
-      {!loading && sessions.length === 0 && (
-        <YStack ai="center" py="$8" gap="$3">
-          <View
-            w={72}
-            h={72}
-            br={24}
-            ai="center"
-            jc="center"
-            backgroundColor="$gray3"
-          >
-            <ReceiptText size={32} color="$gray8" />
-          </View>
-          <YStack ai="center" gap="$1">
-            <Text fontSize={16} fontWeight="600" color="$gray10">No transactions yet</Text>
-            <Text fontSize={13} color="$gray8">Scan a receipt to get started</Text>
-          </YStack>
-          <Pressable onPress={() => router.push('/tabs/scan-receipt')}>
-            <View
-              px="$5"
-              py="$3"
-              br={12}
-              backgroundColor="#2ECC71"
-              mt="$1"
-            >
-              <XStack ai="center" gap="$2">
-                <ScanLine size={16} color="white" />
-                <Text fontSize={14} fontWeight="700" color="white">
-                  Scan receipt
-                </Text>
-              </XStack>
-            </View>
-          </Pressable>
-        </YStack>
-      )}
-
-      {/* Grouped transaction list */}
-      {grouped.map(({ label, items }) => (
-        <View key={label} mb="$2">
-          {/* Group header */}
-          <XStack px="$4" py="$2" ai="center">
-            <Text fontSize={12} fontWeight="600" color="$gray9" textTransform="uppercase" letterSpacing={0.5}>
-              {label}
-            </Text>
-          </XStack>
-
-          {/* Group card */}
-          <View
-            mx="$4"
-            br={16}
-            borderWidth={1}
-            borderColor="$gray4"
-            backgroundColor="white"
-            overflow="hidden"
-          >
-            {items.map((bill, idx) => (
-              <TxRow
-                key={bill.sessionId}
-                bill={bill}
-                currency={stats.currency}
-                locale={locale}
-                onPress={() =>
-                  router.push({
-                    pathname: '/tabs/sessions/history/[historyId]',
-                    params: { historyId: String(bill.sessionId) },
-                  })
-                }
-              />
-            ))}
-          </View>
+    // ✅ FIX: RNView(flex:1) wraps ScrollView so it has a bounded height.
+    // Without this, ScrollView expands to fit all content and never scrolls.
+    <RNView style={[S.container, { backgroundColor: screenBg }]}>
+      <ScrollView
+        style={S.scroll}
+        contentContainerStyle={S.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2ECC71" />
+        }
+      >
+        {/* ── Balance card ── */}
+        <View pt="$4">
+          <BalanceCard stats={stats} username={username} />
         </View>
-      ))}
-    </ScrollView>
+
+        {/* ── This month summary strip ── */}
+        {stats.thisMonthBills > 0 && (
+          <XStack
+            mx="$4"
+            mb="$4"
+            p="$3"
+            br={16}
+            backgroundColor="#F0FDF6"
+            borderWidth={1}
+            borderColor="#BBEED0"
+            ai="center"
+            gap="$3"
+          >
+            <View w={36} h={36} br={12} ai="center" jc="center" backgroundColor="#2ECC71">
+              <TrendingUp size={18} color="white" />
+            </View>
+            <YStack f={1}>
+              <Text fontSize={13} fontWeight="700" color="#166534">
+                {fmt(stats.thisMonthSpent, stats.currency, locale)} this month
+              </Text>
+              <Text fontSize={11} color="#4ADE80">
+                {stats.thisMonthBills} bill{stats.thisMonthBills !== 1 ? 's' : ''} split
+              </Text>
+            </YStack>
+          </XStack>
+        )}
+
+        {/* ── Transactions ── */}
+        <View mx="$4" mb="$2">
+          <XStack ai="center" jc="space-between">
+            <Text fontSize={17} fontWeight="700" color="$color12">Transactions</Text>
+            <Pressable onPress={() => router.push('/tabs/sessions/history/')}>
+              <XStack ai="center" gap={4}>
+                <Text fontSize={13} color="#2ECC71" fontWeight="600">See all</Text>
+                <ChevronRight size={14} color="#2ECC71" />
+              </XStack>
+            </Pressable>
+          </XStack>
+        </View>
+
+        {/* Loading state */}
+        {loading && !refreshing && (
+          <YStack ai="center" py="$6">
+            <Text color="$gray9" fontSize={14}>Loading transactions...</Text>
+          </YStack>
+        )}
+
+        {/* Empty state */}
+        {!loading && sessions.length === 0 && (
+          <YStack ai="center" py="$8" gap="$3">
+            <View w={72} h={72} br={24} ai="center" jc="center" backgroundColor="$gray3">
+              <ReceiptText size={32} color="$gray8" />
+            </View>
+            <YStack ai="center" gap="$1">
+              <Text fontSize={16} fontWeight="600" color="$gray10">No transactions yet</Text>
+              <Text fontSize={13} color="$gray8">Scan a receipt to get started</Text>
+            </YStack>
+            <Pressable onPress={() => router.push('/tabs/scan-receipt')}>
+              <View px="$5" py="$3" br={12} backgroundColor="#2ECC71" mt="$1">
+                <XStack ai="center" gap="$2">
+                  <ScanLine size={16} color="white" />
+                  <Text fontSize={14} fontWeight="700" color="white">Scan receipt</Text>
+                </XStack>
+              </View>
+            </Pressable>
+          </YStack>
+        )}
+
+        {/* Grouped transaction list */}
+        {grouped.map(({ label, items }) => (
+          <View key={label} mb="$2">
+            <XStack px="$4" py="$2" ai="center">
+              <Text fontSize={12} fontWeight="600" color="$gray9" textTransform="uppercase" letterSpacing={0.5}>
+                {label}
+              </Text>
+            </XStack>
+            <View mx="$4" br={16} borderWidth={1} borderColor="$gray4" backgroundColor="$gray2" overflow="hidden">
+              {items.map((bill) => (
+                <TxRow
+                  key={bill.sessionId}
+                  bill={bill}
+                  currency={stats.currency}
+                  locale={locale}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/tabs/sessions/history/[historyId]',
+                      params: { historyId: String(bill.sessionId) },
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </RNView>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const S = StyleSheet.create({
+  // ✅ FIX: outer container bounds the height so ScrollView can scroll
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  // ✅ FIX: scroll fills its bounded parent
+  scroll: {
+    flex: 1,
+  },
+  // ✅ bottom padding so last card isn't hidden behind tab bar
+  scrollContent: {
+    paddingBottom: 32,
+  },
   cardWrap: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -647,6 +454,7 @@ const S = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
+    paddingBottom:100,
     elevation: 8,
   },
   card: {

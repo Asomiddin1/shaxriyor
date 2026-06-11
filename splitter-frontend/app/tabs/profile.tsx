@@ -3,8 +3,8 @@ import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, TextInputP
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
-import { YStack, XStack, Text, Button, Separator, Spinner } from 'tamagui';
-import { Copy, LogOut, Upload, RotateCcw, CheckCircle, User as UserIcon, Mail, Lock, Edit3, X, Check, Languages } from '@tamagui/lucide-icons';
+import { YStack, XStack, Text, Button, Separator, Spinner, useTheme } from 'tamagui';
+import { Copy, LogOut, Upload, RotateCcw, CheckCircle, User as UserIcon, Mail, Lock, Edit3, X, Check, Languages, Moon, Sun } from '@tamagui/lucide-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '@/shared/ui/ScreenContainer';
@@ -274,6 +274,12 @@ export default function ProfileScreen() {
   const language = useAppStore((s) => s.language);
   const { t } = useTranslation();
   const setLanguage = useAppStore((s) => s.setLanguage);
+
+  // theme from store
+  const theme = useAppStore((s) => s.theme);
+  const toggleTheme = useAppStore((s) => s.toggleTheme);
+  const themeColors = useTheme();
+  const screenBg = themeColors.background?.val ?? '#ffffff';
 
   const guestLabel = t('profile.labels.guest', 'Guest');
   const notAvailableLabel = t('profile.labels.notAvailable', 'N/A');
@@ -702,15 +708,15 @@ export default function ProfileScreen() {
   const isResetDisabled = isResettingAvatar || (!user?.avatarUrl && !previewUri);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 }) ?? 0}
       >
         <ScrollView
-          style={{ flex: 1, backgroundColor: 'white' }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 32, backgroundColor: 'white' }}
+          style={{ flex: 1, backgroundColor: screenBg }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 32, backgroundColor: screenBg }}
           keyboardShouldPersistTaps="handled"
         >
           <ScreenContainer>
@@ -752,6 +758,46 @@ export default function ProfileScreen() {
                       onPress={handleResetAvatar}
                     >
                       {isResettingAvatar ? avatarResettingLabel : avatarResetLabel}
+                    </Button>
+                  </XStack>
+                </YStack>
+              </SectionCard>
+
+              {/* Appearance / Theme */}
+              <SectionCard
+                title={t('settings.appearance.title', 'Appearance')}
+                icon={theme === 'dark' ? <Moon size={18} color="$gray11" /> : <Sun size={18} color="$gray11" />}
+              >
+                <YStack gap="$3">
+                  <Text fontSize={12} color="$gray9">
+                    {t('settings.appearance.description', 'Switch between light and dark theme.')}
+                  </Text>
+                  <XStack ai="center" jc="space-between">
+                    <XStack ai="center" gap="$2">
+                      {theme === 'dark' ? (
+                        <Moon size={18} color="$gray11" />
+                      ) : (
+                        <Sun size={18} color="$gray11" />
+                      )}
+                      <Text fontSize={15} fontWeight="600">
+                        {theme === 'dark'
+                          ? t('settings.appearance.dark', 'Dark mode')
+                          : t('settings.appearance.light', 'Light mode')}
+                      </Text>
+                    </XStack>
+                    <Button
+                      size="$3"
+                      variant="outlined"
+                      icon={
+                        theme === 'dark'
+                          ? <Sun size={16} color="$gray11" />
+                          : <Moon size={16} color="$gray11" />
+                      }
+                      onPress={toggleTheme}
+                    >
+                      {theme === 'dark'
+                        ? t('settings.appearance.switchLight', 'Light')
+                        : t('settings.appearance.switchDark', 'Dark')}
                     </Button>
                   </XStack>
                 </YStack>

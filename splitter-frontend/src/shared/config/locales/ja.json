@@ -189,6 +189,14 @@
         "ja": "日本語",
         "uz": "ウズベク語"
       }
+    },
+    "appearance": {
+      "title": "外観",
+      "description": "ライトテーマとダークテーマを切り替えます。",
+      "light": "ライトモード",
+      "dark": "ダークモード",
+      "switchLight": "ライト",
+      "switchDark": "ダーク"
     }
   }
 }

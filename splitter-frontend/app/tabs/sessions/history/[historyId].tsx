@@ -164,7 +164,7 @@ export default function HistoryDetailsScreen() {
             borderWidth={1}
             borderColor="#2ECC71"
             br={12}
-            bg="white"
+            bg="$gray2"
             px={16}
             py={12}
             gap="$3"

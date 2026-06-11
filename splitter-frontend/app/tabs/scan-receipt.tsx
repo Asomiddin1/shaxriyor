@@ -1,12 +1,37 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View, TouchableOpacity } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  Dimensions,
+  Platform,
+  Animated,
+  TextInput,
+  Modal,
+  TouchableWithoutFeedback,
+  Keyboard,
+  KeyboardAvoidingView,
+} from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import { YStack, XStack, Button, Paragraph, Input, Text, Spinner } from 'tamagui';
-import { ChevronLeft, AlertTriangle, Camera as CameraIcon, Image as GalleryIcon, QrCode, ScanLine } from '@tamagui/lucide-icons';
+import { YStack, XStack, Paragraph, Text, Spinner } from 'tamagui';
+import {
+  AlertTriangle,
+  Camera as CameraIcon,
+  Image as GalleryIcon,
+  QrCode,
+  ScanLine,
+  ArrowLeft,
+  Edit3,
+  Check,
+  X,
+} from '@tamagui/lucide-icons';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import { BlurView } from 'expo-blur';
 
 import {
   useReceiptSessionStore,
@@ -17,15 +42,14 @@ import { DEFAULT_LANGUAGE } from '@/shared/config/languages';
 
 type ScanMode = 'camera' | 'qr';
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 const getDefaultSessionName = () => {
   const now = new Date();
   const pad = (value: number) => value.toString().padStart(2, '0');
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  return `${date} ${time}`;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 };
 
-// Check if scanned URL looks like a receipt QR (soliq.uz or similar fiscal URLs)
 function looksLikeReceiptUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -41,6 +65,11 @@ export default function ScanReceiptScreen() {
   const router = useRouter();
 
   const cameraRef = useRef<CameraView | null>(null);
+  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const captureFlash = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(0.9)).current;
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+  const inputRef = useRef<TextInput>(null);
 
   const parsing = useReceiptSessionStore((s) => s.parsing);
   const parseReceipt = useReceiptSessionStore((s) => s.parseReceipt);
@@ -57,11 +86,71 @@ export default function ScanReceiptScreen() {
   const [sessionName, setSessionName] = useState(() => storedSessionName || getDefaultSessionName());
   const [isAutoName, setIsAutoName] = useState(() => !storedSessionName);
   const [localError, setLocalError] = useState<string | null>(null);
-  // QR scan state
   const [scannedUrl, setScannedUrl] = useState<string | null>(null);
-  const [qrScanning, setQrScanning] = useState(true); // prevent double-scan
+  const [qrScanning, setQrScanning] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editSessionName, setEditSessionName] = useState(sessionName);
 
   const language = appLanguage || DEFAULT_LANGUAGE;
+
+  // QR scan line animation
+  useEffect(() => {
+    if (scanMode === 'qr' && qrScanning) {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanLineAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scanLineAnim, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      return () => animation.stop();
+    }
+  }, [scanMode, qrScanning]);
+
+  // Modal animations
+  useEffect(() => {
+    if (showEditModal) {
+      setEditSessionName(sessionName);
+      Animated.parallel([
+        Animated.spring(modalScale, {
+          toValue: 1,
+          friction: 8,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(modalOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 300);
+    } else {
+      Animated.parallel([
+        Animated.timing(modalScale, {
+          toValue: 0.9,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(modalOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [showEditModal]);
 
   useEffect(() => {
     if (isFocused && !perm?.granted) requestPerm();
@@ -70,7 +159,7 @@ export default function ScanReceiptScreen() {
   useEffect(() => {
     if (storedSessionName) {
       setIsAutoName(false);
-      setSessionName((prev) => (prev === storedSessionName ? prev : storedSessionName));
+      setSessionName(storedSessionName);
     } else {
       setIsAutoName(true);
     }
@@ -80,35 +169,67 @@ export default function ScanReceiptScreen() {
     useCallback(() => {
       if (storedSessionName) return;
       if (!isAutoName) return;
-      const freshName = getDefaultSessionName();
-      setSessionName((prev) => (prev === freshName ? prev : freshName));
+      setSessionName(getDefaultSessionName());
     }, [storedSessionName, isAutoName])
   );
 
   useEffect(() => () => clearCapture(), [clearCapture]);
 
-  // Reset QR state when switching modes
   useEffect(() => {
     setScannedUrl(null);
     setQrScanning(true);
     setLocalError(null);
   }, [scanMode]);
 
-  // --- Camera (photo) scan ---
+  const flashAnimation = () => {
+    Animated.sequence([
+      Animated.timing(captureFlash, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(captureFlash, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handleSaveSessionName = () => {
+    const trimmedName = editSessionName.trim();
+    if (trimmedName) {
+      setSessionName(trimmedName);
+      setIsAutoName(false);
+      setSessionNameStore(trimmedName);
+    }
+    setShowEditModal(false);
+    Keyboard.dismiss();
+  };
+
+  const handleResetSessionName = () => {
+    const freshName = getDefaultSessionName();
+    setEditSessionName(freshName);
+    setSessionName(freshName);
+    setIsAutoName(true);
+    setShowEditModal(false);
+    Keyboard.dismiss();
+  };
+
   const handleParse = useCallback(async () => {
     if (!cameraRef.current || parsing) return;
 
     try {
       setLocalError(null);
+      flashAnimation();
+
       const picture = await cameraRef.current.takePictureAsync({
         quality: 0.7,
         base64: false,
         skipProcessing: true,
       });
 
-      if (!picture?.uri) {
-        throw new Error('Could not capture the receipt photo. Please try again.');
-      }
+      if (!picture?.uri) throw new Error('Could not capture the receipt photo.');
 
       const targetWidth = picture.width ? Math.min(picture.width, 1280) : undefined;
       const manipResult = await manipulateAsync(
@@ -117,9 +238,7 @@ export default function ScanReceiptScreen() {
         { compress: 0.45, format: SaveFormat.JPEG, base64: true }
       );
 
-      if (!manipResult?.base64) {
-        throw new Error('Failed to prepare the receipt photo for upload.');
-      }
+      if (!manipResult?.base64) throw new Error('Failed to prepare image.');
 
       const preparedName = sessionName.trim() || getDefaultSessionName();
       const capture: CapturedReceiptImage = {
@@ -141,12 +260,11 @@ export default function ScanReceiptScreen() {
 
       router.push('/tabs/sessions/participants');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong while sending the receipt';
+      const message = error instanceof Error ? error.message : 'Something went wrong';
       setLocalError(message);
     }
   }, [cameraRef, parsing, sessionName, setSessionNameStore, setCapture, parseReceipt, language, router]);
 
-  // --- Gallery pick ---
   const handlePickFromGallery = useCallback(async () => {
     if (parsing) return;
 
@@ -169,7 +287,7 @@ export default function ScanReceiptScreen() {
         { compress: 0.45, format: SaveFormat.JPEG, base64: true }
       );
 
-      if (!manipResult?.base64) throw new Error('Failed to prepare the selected image for upload.');
+      if (!manipResult?.base64) throw new Error('Failed to prepare image.');
 
       const preparedName = sessionName.trim() || getDefaultSessionName();
       const capture: CapturedReceiptImage = {
@@ -191,17 +309,16 @@ export default function ScanReceiptScreen() {
 
       router.push('/tabs/sessions/participants');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong while processing the image';
+      const message = error instanceof Error ? error.message : 'Something went wrong';
       setLocalError(message);
     }
   }, [parsing, sessionName, setSessionNameStore, setCapture, parseReceipt, language, router]);
 
-  // --- QR code scanned ---
   const handleQrScanned = useCallback(async ({ data }: BarcodeScanningResult) => {
     if (!qrScanning || parsing) return;
-    if (!looksLikeReceiptUrl(data)) return; // ignore non-URL QRs
+    if (!looksLikeReceiptUrl(data)) return;
 
-    setQrScanning(false); // lock — prevent re-trigger
+    setQrScanning(false);
     setScannedUrl(data);
     setLocalError(null);
 
@@ -215,19 +332,14 @@ export default function ScanReceiptScreen() {
       });
       router.push('/tabs/sessions/participants');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load receipt from QR';
+      const message = error instanceof Error ? error.message : 'Failed to load receipt';
       setLocalError(message);
-      setQrScanning(true); // re-enable scanning on error
+      setQrScanning(true);
       setScannedUrl(null);
     }
   }, [qrScanning, parsing, sessionName, setSessionNameStore, parseReceiptFromQr, language, router]);
 
   const goBack = useCallback(() => router.back(), [router]);
-
-  const handleSessionNameChange = useCallback((value: string) => {
-    setIsAutoName(false);
-    setSessionName(value);
-  }, []);
 
   const useMock = useCallback(() => {
     router.push({ pathname: '/tabs/sessions/participants', params: { receiptId: 'mock-001' } } as never);
@@ -236,49 +348,14 @@ export default function ScanReceiptScreen() {
   const disableAction = parsing || !perm?.granted;
   const errorMessage = localError || parseError;
 
+  const scanLineTranslateY = scanLineAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 220],
+  });
+
   return (
     <View style={S.root}>
-      {/* Header */}
-      <View style={S.headerAbs}>
-        <XStack ai="center" jc="space-between" px="$3" py="$2">
-          <Button size="$2" h={28} chromeless onPress={goBack}
-            icon={<ChevronLeft size={18} color="white" />} color="white">
-            Back
-          </Button>
-          <Paragraph fow="700" fos="$6" col="white">Scan receipt</Paragraph>
-          <YStack w={54} />
-        </XStack>
-
-        {/* Mode switcher */}
-        <XStack ai="center" jc="center" gap="$2" px="$4" pb="$2">
-          <TouchableOpacity
-            onPress={() => setScanMode('camera')}
-            style={[S.modeTab, scanMode === 'camera' && S.modeTabActive]}
-          >
-            <XStack ai="center" gap={6}>
-              <CameraIcon size={14} color={scanMode === 'camera' ? '#fff' : 'rgba(255,255,255,0.6)'} />
-              <Text fontSize={13} fontWeight="600"
-                color={scanMode === 'camera' ? 'white' : 'rgba(255,255,255,0.6)'}>
-                Photo
-              </Text>
-            </XStack>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setScanMode('qr')}
-            style={[S.modeTab, scanMode === 'qr' && S.modeTabActive]}
-          >
-            <XStack ai="center" gap={6}>
-              <QrCode size={14} color={scanMode === 'qr' ? '#fff' : 'rgba(255,255,255,0.6)'} />
-              <Text fontSize={13} fontWeight="600"
-                color={scanMode === 'qr' ? 'white' : 'rgba(255,255,255,0.6)'}>
-                QR Code
-              </Text>
-            </XStack>
-          </TouchableOpacity>
-        </XStack>
-      </View>
-
-      {/* Camera view */}
+      {/* Camera View */}
       <View style={S.cameraWrap}>
         {isFocused && perm?.granted ? (
           scanMode === 'qr' ? (
@@ -293,241 +370,659 @@ export default function ScanReceiptScreen() {
             <CameraView ref={cameraRef} style={S.camera} facing="back" />
           )
         ) : (
-          <YStack f={1} ai="center" jc="center">
-            {!perm
-              ? <ActivityIndicator color="white" />
-              : <Paragraph col="$gray1">Allow camera access</Paragraph>
-            }
-          </YStack>
+          <View style={S.permissionContainer}>
+            {!perm ? (
+              <ActivityIndicator color="#fff" size="large" />
+            ) : (
+              <YStack ai="center" gap="$3">
+                <CameraIcon size={40} color="rgba(255,255,255,0.4)" />
+                <Text style={S.permissionText}>Allow camera access</Text>
+              </YStack>
+            )}
+          </View>
         )}
 
-        {/* QR viewfinder overlay */}
+        {/* Minimal QR Frame */}
         {scanMode === 'qr' && (
           <View style={S.qrOverlay} pointerEvents="none">
-            <View style={S.qrFrame}>
-              {/* Corner decorations */}
-              <View style={[S.corner, S.cornerTL]} />
-              <View style={[S.corner, S.cornerTR]} />
-              <View style={[S.corner, S.cornerBL]} />
-              <View style={[S.corner, S.cornerBR]} />
+            <View style={S.qrFrameMinimal}>
+              <View style={[S.qrCornerMinimal, { top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2 }]} />
+              <View style={[S.qrCornerMinimal, { top: 0, right: 0, borderTopWidth: 2, borderRightWidth: 2 }]} />
+              <View style={[S.qrCornerMinimal, { bottom: 0, left: 0, borderBottomWidth: 2, borderLeftWidth: 2 }]} />
+              <View style={[S.qrCornerMinimal, { bottom: 0, right: 0, borderBottomWidth: 2, borderRightWidth: 2 }]} />
+              
+              {qrScanning && (
+                <Animated.View
+                  style={[
+                    S.scanLine,
+                    {
+                      transform: [{ translateY: scanLineTranslateY }],
+                    },
+                  ]}
+                />
+              )}
             </View>
             <Text style={S.qrHint}>
-              {parsing
-                ? 'Processing receipt...'
-                : scannedUrl
-                ? 'QR found! Loading...'
-                : 'Point camera at receipt QR code'}
+              {scannedUrl ? 'Found!' : 'Point at QR code'}
             </Text>
           </View>
         )}
 
-        {/* Parsing overlay */}
-        {parsing && (
-          <View style={S.overlay}>
-            <Spinner size="large" color="white" />
-            <Paragraph mt="$2" col="white">
-              {scanMode === 'qr' ? 'Loading receipt from QR...' : 'Uploading receipt...'}
-            </Paragraph>
+        {/* Camera Frame Guides */}
+        {scanMode === 'camera' && (
+          <View style={S.cameraGuides} pointerEvents="none">
+            <View style={[S.guideLine, { top: '30%' }]} />
+            <View style={[S.guideLine, { bottom: '30%' }]} />
           </View>
         )}
+
+        {/* Flash Effect */}
+        <Animated.View style={[S.flashEffect, { opacity: captureFlash }]} />
       </View>
 
-      {/* Bottom actions panel */}
-      <View style={S.actions}>
-        <YStack gap="$3">
-          {/* Session name input */}
-          <YStack gap={8}>
-            <Paragraph color="$gray1" fontSize={12}>Session name</Paragraph>
-            <Input
-              value={sessionName}
-              onChangeText={handleSessionNameChange}
-              placeholder="e.g. Cafe on October"
-              height={41}
-              borderRadius={10}
-              px={16}
-              backgroundColor="rgba(255,255,255,0.1)"
-              color="white"
-              borderWidth={1}
-              borderColor="rgba(255,255,255,0.25)"
-            />
-          </YStack>
+      {/* Minimal Top Bar */}
+      <View style={S.topBar}>
+        <TouchableOpacity onPress={goBack} style={S.backBtn}>
+          <ArrowLeft size={20} color="#fff" />
+        </TouchableOpacity>
+        
+        {/* Session Name with Edit Icon */}
+        <TouchableOpacity 
+          style={S.sessionNameContainer}
+          onPress={() => setShowEditModal(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={S.sessionNameTopText} numberOfLines={1}>
+            {sessionName || getDefaultSessionName()}
+          </Text>
+          <Edit3 size={13} color="rgba(255,255,255,0.5)" style={S.editIcon} />
+        </TouchableOpacity>
+        
+        {/* Mode Toggle */}
+        <View style={S.modeToggle}>
+          <TouchableOpacity
+            onPress={() => setScanMode('camera')}
+            style={[S.modeOption, scanMode === 'camera' && S.modeActive]}
+          >
+            <CameraIcon size={16} color={scanMode === 'camera' ? '#000' : '#fff'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setScanMode('qr')}
+            style={[S.modeOption, scanMode === 'qr' && S.modeActive]}
+          >
+            <QrCode size={16} color={scanMode === 'qr' ? '#000' : '#fff'} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-          <Paragraph color="$gray1" fontSize={12}>
-            language: <Text fontWeight="700" color="white">{language}</Text>
-          </Paragraph>
+      {/* Language Badge - Top Right */}
+      <View style={S.languageBadgeTop}>
+        <Text style={S.languageBadgeText}>{language.toUpperCase()}</Text>
+      </View>
 
-          {/* Scanned URL preview */}
-          {scanMode === 'qr' && scannedUrl && !parsing && (
-            <XStack ai="center" gap="$2" bg="rgba(46,204,113,0.15)"
-              px="$2" py="$2" borderRadius={8} borderWidth={1} borderColor="rgba(46,204,113,0.3)">
-              <QrCode size={14} color="#2ECC71" />
-              <Text color="#2ECC71" fontSize={11} flexShrink={1} numberOfLines={2}>
-                {scannedUrl}
+      {/* Processing State */}
+      {parsing && (
+        <View style={S.processingOverlay}>
+          <BlurView intensity={30} tint="dark" style={S.processingBlur}>
+            <YStack ai="center" gap="$3">
+              <Spinner size="large" color="#fff" />
+              <Text style={S.processingText}>
+                {scanMode === 'qr' ? 'Loading receipt...' : 'Processing image...'}
               </Text>
-            </XStack>
-          )}
+            </YStack>
+          </BlurView>
+        </View>
+      )}
 
-          {storedCapture?.uri && scanMode === 'camera' && (
-            <XStack ai="center" gap="$2">
-              <Image source={{ uri: storedCapture.uri }} style={S.preview} resizeMode="cover" />
-              <Paragraph color="$gray1" fontSize={12}>
-                Last photo stored; capturing again will overwrite it.
-              </Paragraph>
-            </XStack>
+      {/* Status & Error - Floating */}
+      {(scannedUrl || errorMessage) && (
+        <View style={S.floatingStatus}>
+          {scannedUrl && (
+            <BlurView intensity={20} tint="dark" style={S.statusBlur}>
+              <XStack ai="center" gap="$2">
+                <QrCode size={12} color="rgba(255,255,255,0.6)" />
+                <Text style={S.urlText} numberOfLines={1}>{scannedUrl}</Text>
+              </XStack>
+            </BlurView>
           )}
-
           {errorMessage && (
-            <XStack ai="center" gap="$2" bg="rgba(255,99,71,0.18)"
-              px="$2" py="$2" borderRadius={8}>
-              <AlertTriangle size={16} color="#FF6B6B" />
-              <Paragraph color="#FF6B6B" flexShrink={1}>{errorMessage}</Paragraph>
-            </XStack>
+            <BlurView intensity={20} tint="dark" style={[S.statusBlur, S.errorBlur]}>
+              <XStack ai="center" gap="$2">
+                <AlertTriangle size={12} color="#FF6B6B" />
+                <Text style={S.errorText} numberOfLines={2}>{errorMessage}</Text>
+              </XStack>
+            </BlurView>
           )}
+        </View>
+      )}
 
-          {/* Action buttons — Camera mode */}
-          {scanMode === 'camera' && (
-            <XStack ai="center" jc="space-between" gap="$3">
-              <Button size="$3" borderRadius="$3" theme="gray" onPress={goBack}
-                disabled={parsing} opacity={parsing ? 0.6 : 1}>
-                Cancel
-              </Button>
-              <Button size="$3" borderRadius="$3" theme="gray" onPress={handlePickFromGallery}
-                disabled={parsing} opacity={parsing ? 0.6 : 1}
-                icon={<GalleryIcon size={18} color="white" />}>
-                Gallery
-              </Button>
-              <Button size="$3" borderRadius="$3" theme="active" onPress={handleParse}
+      {/* Bottom Capture Area */}
+      <View style={S.bottomCaptureArea}>
+        <BlurView intensity={30} tint="dark" style={S.captureBlur}>
+          {scanMode === 'camera' ? (
+            <XStack ai="center" jc="space-between" px="$6">
+              {/* Gallery Button */}
+              <TouchableOpacity
+                onPress={handlePickFromGallery}
+                disabled={parsing}
+                style={[S.sideBtn, parsing && S.btnDisabled]}
+              >
+                <GalleryIcon size={22} color="#fff" />
+              </TouchableOpacity>
+              
+              {/* Capture Button */}
+              <TouchableOpacity
+                onPress={handleParse}
                 disabled={disableAction}
-                icon={parsing ? undefined : <CameraIcon size={18} color="white" />}>
-                {parsing ? 'Processing...' : 'Scan'}
-              </Button>
+                style={[S.captureBtnContainer, disableAction && S.btnDisabled]}
+                activeOpacity={0.8}
+              >
+                <View style={S.captureBtnOuter}>
+                  <View style={S.captureBtnInner}>
+                    <View style={S.captureBtnCore} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+              
+              {/* Cancel Button */}
+              <TouchableOpacity
+                onPress={goBack}
+                disabled={parsing}
+                style={[S.sideBtn, parsing && S.btnDisabled]}
+              >
+                <X size={22} color="#fff" />
+              </TouchableOpacity>
             </XStack>
-          )}
-
-          {/* Action buttons — QR mode */}
-          {scanMode === 'qr' && (
-            <XStack ai="center" jc="space-between" gap="$3">
-              <Button size="$3" borderRadius="$3" theme="gray" onPress={goBack}
-                disabled={parsing} opacity={parsing ? 0.6 : 1}>
-                Cancel
-              </Button>
-              {!parsing && scannedUrl === null && (
-                <XStack ai="center" gap="$2" f={1} jc="center">
-                  <ScanLine size={16} color="rgba(255,255,255,0.7)" />
-                  <Text color="rgba(255,255,255,0.7)" fontSize={13}>
-                    Scanning...
+          ) : (
+            <XStack ai="center" jc="center" px="$6" py="$2">
+              {scannedUrl ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setScannedUrl(null);
+                    setQrScanning(true);
+                    setLocalError(null);
+                  }}
+                  style={S.qrRescanBtn}
+                >
+                  <ScanLine size={18} color="#fff" />
+                  <Text style={S.qrRescanText}>Scan Again</Text>
+                </TouchableOpacity>
+              ) : (
+                <XStack ai="center" gap="$2">
+                  <View style={[S.dot, qrScanning ? S.dotActive : S.dotInactive]} />
+                  <Text style={S.qrWaitingText}>
+                    {qrScanning ? 'Scanning QR code...' : 'Ready to scan'}
                   </Text>
                 </XStack>
               )}
-              {!parsing && scannedUrl !== null && (
-                <Button size="$3" borderRadius="$3" theme="gray"
-                  onPress={() => { setScannedUrl(null); setQrScanning(true); setLocalError(null); }}>
-                  Scan again
-                </Button>
-              )}
             </XStack>
           )}
-
-          <Button size="$2" borderRadius="$3" theme="gray" variant="outlined"
-            onPress={useMock} disabled={parsing}>
-            Use mock receipt
-          </Button>
-        </YStack>
+        </BlurView>
       </View>
+
+      {/* Edit Session Name Modal - Higher Position */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="none"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <TouchableWithoutFeedback onPress={() => {
+            Keyboard.dismiss();
+            setShowEditModal(false);
+          }}>
+            <View style={S.modalOverlay}>
+              <Animated.View 
+                style={[
+                  S.modalContent,
+                  {
+                    opacity: modalOpacity,
+                    transform: [{ scale: modalScale }],
+                  },
+                ]}
+              >
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                  <View>
+                    {/* Modal Header */}
+                    <XStack jc="space-between" ai="center" mb="$4">
+                      <Text style={S.modalTitle}>Session Name</Text>
+                      <TouchableOpacity 
+                        onPress={() => setShowEditModal(false)}
+                        style={S.modalCloseBtn}
+                      >
+                        <X size={18} color="rgba(255,255,255,0.6)" />
+                      </TouchableOpacity>
+                    </XStack>
+
+                    {/* Input Field */}
+                    <View style={S.modalInputContainer}>
+                      <TextInput
+                        ref={inputRef}
+                        value={editSessionName}
+                        onChangeText={setEditSessionName}
+                        style={S.modalInput}
+                        placeholder="Enter session name"
+                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        selectionColor="rgba(255,255,255,0.5)"
+                        onSubmitEditing={handleSaveSessionName}
+                        returnKeyType="done"
+                      />
+                      {editSessionName.length > 0 && (
+                        <TouchableOpacity 
+                          onPress={() => setEditSessionName('')}
+                          style={S.modalClearBtn}
+                        >
+                          <X size={16} color="rgba(255,255,255,0.4)" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Character Count */}
+                    <Text style={S.charCount}>
+                      {editSessionName.length} characters
+                    </Text>
+
+                    {/* Actions */}
+                    <XStack gap="$3" mt="$4">
+                      <TouchableOpacity
+                        onPress={handleResetSessionName}
+                        style={S.modalResetBtn}
+                      >
+                        <Text style={S.modalResetText}>Auto Name</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        onPress={handleSaveSessionName}
+                        style={[
+                          S.modalSaveBtn,
+                          !editSessionName.trim() && S.modalSaveBtnDisabled,
+                        ]}
+                        disabled={!editSessionName.trim()}
+                      >
+                        <Check size={18} color="#000" />
+                        <Text style={S.modalSaveText}>Save</Text>
+                      </TouchableOpacity>
+                    </XStack>
+                  </View>
+                </TouchableWithoutFeedback>
+              </Animated.View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
 
-const CORNER_SIZE = 24;
-const CORNER_THICKNESS = 3;
-const CORNER_COLOR = '#2ECC71';
-
 const S = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  headerAbs: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
-    paddingTop: 8, backgroundColor: 'rgba(0,0,0,0.35)',
+  root: {
+    flex: 1,
+    backgroundColor: '#000',
   },
-  modeTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+  cameraWrap: {
+    flex: 1,
   },
-  modeTabActive: {
-    backgroundColor: 'rgba(46,204,113,0.25)',
-    borderColor: '#2ECC71',
+  camera: {
+    flex: 1,
   },
-  cameraWrap: { flex: 1, backgroundColor: '#000' },
-  camera: { flex: 1 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  permissionText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 15,
+  },
 
-  // QR viewfinder
+  // Top Bar
+  topBar: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sessionNameContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    maxWidth: '60%',
+  },
+  sessionNameTopText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'center',
+    marginRight: 6,
+  },
+  editIcon: {
+    marginLeft: 4,
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 3,
+  },
+  modeOption: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeActive: {
+    backgroundColor: '#fff',
+  },
+
+  // Language Badge Top
+  languageBadgeTop: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 110 : 90,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    zIndex: 10,
+  },
+  languageBadgeText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+
+  // QR Frame
   qrOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  qrFrame: {
+  qrFrameMinimal: {
     width: 240,
     height: 240,
     position: 'relative',
   },
+  qrCornerMinimal: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderColor: '#fff',
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   qrHint: {
     marginTop: 20,
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
-  corner: {
-    position: 'absolute',
-    width: CORNER_SIZE,
-    height: CORNER_SIZE,
-    borderColor: CORNER_COLOR,
-  },
-  cornerTL: {
-    top: 0, left: 0,
-    borderTopWidth: CORNER_THICKNESS,
-    borderLeftWidth: CORNER_THICKNESS,
-    borderTopLeftRadius: 4,
-  },
-  cornerTR: {
-    top: 0, right: 0,
-    borderTopWidth: CORNER_THICKNESS,
-    borderRightWidth: CORNER_THICKNESS,
-    borderTopRightRadius: 4,
-  },
-  cornerBL: {
-    bottom: 0, left: 0,
-    borderBottomWidth: CORNER_THICKNESS,
-    borderLeftWidth: CORNER_THICKNESS,
-    borderBottomLeftRadius: 4,
-  },
-  cornerBR: {
-    bottom: 0, right: 0,
-    borderBottomWidth: CORNER_THICKNESS,
-    borderRightWidth: CORNER_THICKNESS,
-    borderBottomRightRadius: 4,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: 0.5,
   },
 
-  actions: {
-    position: 'absolute',
-    bottom: 24, left: 16, right: 16,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    padding: 16,
-    borderRadius: 16,
+  // Camera Guides
+  cameraGuides: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
   },
-  preview: {
-    width: 56, height: 56,
-    borderRadius: 8,
+  guideLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 0.5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+
+  // Flash
+  flashEffect: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#fff',
+  },
+
+  // Processing
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  processingBlur: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+
+  // Floating Status
+  floatingStatus: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 140 : 115,
+    left: 16,
+    right: 16,
+    zIndex: 10,
+    gap: 8,
+  },
+  statusBlur: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    padding: 10,
+  },
+  errorBlur: {
+    backgroundColor: 'rgba(255,107,107,0.15)',
+  },
+  urlText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    flex: 1,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    flex: 1,
+  },
+
+  // Bottom Capture Area
+  bottomCaptureArea: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  captureBlur: {
+    paddingVertical: 40,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  sideBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureBtnContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureBtnOuter: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureBtnInner: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureBtnCore: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fff',
+  },
+  btnDisabled: {
+    opacity: 0.4,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  dotActive: {
+    backgroundColor: '#4ADE80',
+  },
+  dotInactive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  qrRescanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  qrRescanText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  qrWaitingText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 200 : 160,
+    paddingHorizontal: 24,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 20,
+    padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  modalInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  modalClearBtn: {
+    padding: 12,
+  },
+  charCount: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 12,
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  modalResetBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+  },
+  modalResetText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  modalSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  modalSaveBtnDisabled: {
+    opacity: 0.4,
+  },
+  modalSaveText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
