@@ -43,7 +43,6 @@ function DotBadge({ value }: { value?: number }) {
   );
 }
 
-// --- Animated Drawer Overlay ---
 function DrawerOverlay() {
   const { isOpen, close } = useDrawerStore();
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;

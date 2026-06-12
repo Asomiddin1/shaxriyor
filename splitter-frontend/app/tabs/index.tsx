@@ -24,6 +24,7 @@ import {
 } from '@tamagui/lucide-icons';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import UserAvatar from '@/shared/ui/UserAvatar';
 import type { SessionHistoryEntry } from '@/features/sessions/api/history.api';
@@ -245,6 +246,9 @@ export default function HomePage() {
   const { user } = useAppStore();
   const themeColors = useTheme();
   const screenBg = themeColors.background?.val ?? '#ffffff';
+  const insets = useSafeAreaInsets();
+  // Pastdagi suzuvchi tab bar (~56px) + safe area ortida kontent yashirinmasligi uchun
+  const scrollPaddingBottom = insets.bottom + 80;
 
   const sessions = useSessionsHistoryStore((s) => s.sessions);
   const loading = useSessionsHistoryStore((s) => s.loading);
@@ -321,7 +325,7 @@ export default function HomePage() {
     <RNView style={[S.container, { backgroundColor: screenBg }]}>
       <ScrollView
         style={S.scroll}
-        contentContainerStyle={S.scrollContent}
+        contentContainerStyle={[S.scrollContent, { paddingBottom: scrollPaddingBottom }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2ECC71" />
@@ -454,7 +458,6 @@ const S = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
-    paddingBottom:100,
     elevation: 8,
   },
   card: {
