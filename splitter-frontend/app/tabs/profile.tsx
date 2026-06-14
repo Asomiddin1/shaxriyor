@@ -1,12 +1,43 @@
 ﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, TextInputProps } from 'react-native';
+import {
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInputProps,
+  Pressable,
+  Dimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { YStack, XStack, Text, Button, Separator, Spinner, useTheme } from 'tamagui';
-import { Copy, LogOut, Upload, RotateCcw, CheckCircle, User as UserIcon, Mail, Lock, Edit3, X, Check, Languages, Moon, Sun } from '@tamagui/lucide-icons';
+import {
+  Copy,
+  LogOut,
+  Upload,
+  RotateCcw,
+  CheckCircle,
+  User as UserIcon,
+  Mail,
+  Lock,
+  Edit3,
+  X,
+  Check,
+  Languages,
+  Moon,
+  Sun,
+  Camera,
+  ChevronRight,
+  Shield,
+  Palette,
+  Globe,
+  ArrowRight,
+} from '@tamagui/lucide-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ScreenContainer } from '@/shared/ui/ScreenContainer';
 import UserAvatar from '@/shared/ui/UserAvatar';
 import Input from '@/shared/ui/Input';
@@ -15,6 +46,8 @@ import { useAppStore } from '@/shared/lib/stores/app-store';
 import { changePassword, resetAvatar, updateEmail, updateUsername, uploadAvatar } from '@/features/auth/api';
 import { LANGUAGE_OPTIONS, type LanguageCode } from '@/shared/config/languages';
 import { LanguageSegmentedControl } from '@/shared/ui/LanguageSegmentedControl';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type SuccessKey = 'avatar' | 'password';
 type StatusState = 'idle' | 'saving' | 'success';
@@ -31,23 +64,50 @@ interface SectionCardProps {
   icon: React.ReactNode;
   children: React.ReactNode;
   successTrigger?: number;
+  gradient?: boolean;
 }
 
-function SectionCard({ title, icon, children, successTrigger = 0 }: SectionCardProps) {
+function SectionCard({ title, icon, children, successTrigger = 0, gradient = false }: SectionCardProps) {
+  const theme = useTheme();
+  
   return (
     <YStack
       borderWidth={1}
-      borderColor="$gray5"
-      borderRadius={16}
-      padding="$4"
-      gap="$3"
+      borderColor={gradient ? 'transparent' : '$gray5'}
+      borderRadius={24}
+      padding="$5"
+      gap="$4"
       backgroundColor="$background"
       position="relative"
+      overflow="hidden"
+      shadowColor="$shadowColor"
+      shadowOffset={{ width: 0, height: 4 }}
+      shadowOpacity={0.08}
+      shadowRadius={12}
+      elevation={3}
     >
+      {gradient && (
+        <YStack
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          height={3}
+          backgroundColor="$green9"
+          borderTopLeftRadius={24}
+          borderTopRightRadius={24}
+        />
+      )}
       <XStack ai="center" jc="space-between">
-        <XStack ai="center" gap="$2">
-          {icon}
-          <Text fontSize={16} fontWeight="700">
+        <XStack ai="center" gap="$3">
+          <YStack
+            backgroundColor="$green4"
+            borderRadius={12}
+            padding="$2.5"
+          >
+            {icon}
+          </YStack>
+          <Text fontSize={17} fontWeight="700" letterSpacing={-0.3}>
             {title}
           </Text>
         </XStack>
@@ -63,6 +123,7 @@ function SuccessBadge({ trigger }: { trigger?: number }) {
   const [visible, setVisible] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.9)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
 
   useEffect(() => {
     if (!trigger) return;
@@ -70,15 +131,23 @@ function SuccessBadge({ trigger }: { trigger?: number }) {
     setVisible(true);
     opacity.setValue(0);
     scale.setValue(0.9);
+    translateY.setValue(10);
 
     Animated.parallel([
-      Animated.timing(opacity, {
+      Animated.spring(opacity, {
         toValue: 1,
-        duration: 160,
         useNativeDriver: true,
+        friction: 6,
+        tension: 140,
       }),
       Animated.spring(scale, {
         toValue: 1,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 140,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
         useNativeDriver: true,
         friction: 6,
         tension: 140,
@@ -87,11 +156,11 @@ function SuccessBadge({ trigger }: { trigger?: number }) {
       Animated.timing(opacity, {
         toValue: 0,
         duration: 220,
-        delay: 1200,
+        delay: 1800,
         useNativeDriver: true,
       }).start(() => setVisible(false));
     });
-  }, [trigger, opacity, scale]);
+  }, [trigger, opacity, scale, translateY]);
 
   if (!visible) return null;
 
@@ -99,16 +168,18 @@ function SuccessBadge({ trigger }: { trigger?: number }) {
     <Animated.View
       style={{
         opacity,
-        transform: [{ scale }],
-        backgroundColor: 'rgba(34,197,94,0.15)',
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 4,
+        transform: [{ scale }, { translateY }],
+        backgroundColor: 'rgba(34,197,94,0.12)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(34,197,94,0.2)',
       }}
     >
-      <XStack ai="center" gap="$1">
-        <CheckCircle size={16} color="#22c55e" />
-        <Text fontSize={12} fontWeight="600" color="$green10">
+      <XStack ai="center" gap="$1.5">
+        <CheckCircle size={14} color="#22c55e" />
+        <Text fontSize={12} fontWeight="600" color="#22c55e">
           {t('profile.status.saved', 'Saved')}
         </Text>
       </XStack>
@@ -125,16 +196,25 @@ interface InfoRowProps {
 function InfoRow({ label, value, onCopy }: InfoRowProps) {
   const { t } = useTranslation();
   return (
-    <YStack gap="$1">
-      <Text fontSize={12} color="$gray9">
+    <YStack gap="$2">
+      <Text fontSize={12} fontWeight="500" color="$gray9" letterSpacing={0.3} textTransform="uppercase">
         {label}
       </Text>
-      <XStack ai="center" jc="space-between">
-        <Text fontSize={16} fontWeight="600">
+      <XStack ai="center" jc="space-between" backgroundColor="$gray2" borderRadius={12} padding="$3">
+        <Text fontSize={15} fontWeight="600" letterSpacing={-0.2} numberOfLines={1} flex={1}>
           {value || '—'}
         </Text>
         {onCopy && (
-          <Button size="$2" variant="outlined" icon={<Copy size={16} color="$gray11" />} onPress={onCopy}>
+          <Button
+            size="$2.5"
+            variant="outlined"
+            borderRadius={10}
+            borderColor="$gray5"
+            backgroundColor="$background"
+            icon={<Copy size={14} color="$gray11" />}
+            onPress={onCopy}
+            pressStyle={{ scale: 0.95 }}
+          >
             {t('profile.actions.copy', 'Copy')}
           </Button>
         )}
@@ -204,65 +284,212 @@ function EditableFieldRow({
   };
 
   return (
-    <YStack gap="$2">
-      <XStack ai="center" jc="space-between">
-        <Text fontSize={12} color="$gray9">
-          {label}
-        </Text>
+    <YStack gap="$2.5">
+      <Text fontSize={12} fontWeight="500" color="$gray9" letterSpacing={0.3} textTransform="uppercase">
+        {label}
+      </Text>
+      <XStack ai="center" jc="space-between" gap="$2">
+        <XStack flex={1}>
+          {isEditing ? (
+            <Input
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={placeholder}
+              error={error || undefined}
+              textInputProps={{ autoCapitalize: 'none', autoCorrect: false, ...textInputProps }}
+            />
+          ) : (
+            <YStack 
+              backgroundColor="$gray2" 
+              borderRadius={12} 
+              paddingHorizontal="$3" 
+              paddingVertical="$3"
+              flex={1}
+            >
+              <Text fontSize={15} fontWeight="600" letterSpacing={-0.2} numberOfLines={1}>
+                {value || '—'}
+              </Text>
+            </YStack>
+          )}
+        </XStack>
         <XStack gap="$2">
           {isEditing ? (
             <>
               <Button
-                size="$2"
+                size="$2.5"
                 variant="outlined"
+                borderRadius={10}
+                borderColor="$gray5"
+                backgroundColor="$background"
                 icon={<X size={16} color="$gray11" />}
                 onPress={onCancelEdit}
+                pressStyle={{ scale: 0.95 }}
               />
               <Button
-                size="$2"
+                size="$2.5"
                 bg="$green9"
                 color="white"
+                borderRadius={10}
                 icon={status === 'saving' ? <Spinner size="small" color="white" /> : <Check size={16} color="white" />}
                 onPress={onSave}
                 disabled={status === 'saving'}
+                pressStyle={{ scale: 0.95 }}
               />
             </>
           ) : (
             <>
               {onCopy && (
                 <Button
-                  size="$2"
+                  size="$2.5"
                   variant="outlined"
-                  icon={<Copy size={16} color="$gray11" />}
+                  borderRadius={10}
+                  borderColor="$gray5"
+                  backgroundColor="$background"
+                  icon={<Copy size={14} color="$gray11" />}
                   onPress={onCopy}
+                  pressStyle={{ scale: 0.95 }}
                 >
                   {t('profile.actions.copy', 'Copy')}
                 </Button>
               )}
               <Button
-                size="$2"
+                size="$2.5"
                 variant="outlined"
+                borderRadius={10}
+                borderColor="$gray5"
+                backgroundColor="$background"
                 onPress={onStartEdit}
                 icon={editIcon()}
+                pressStyle={{ scale: 0.95 }}
               />
             </>
           )}
         </XStack>
       </XStack>
-      {isEditing ? (
-        <Input
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={placeholder}
-          error={error || undefined}
-          textInputProps={{ autoCapitalize: 'none', autoCorrect: false, ...textInputProps }}
-        />
-      ) : (
-        <Text fontSize={16} fontWeight="600">
-          {value || '—'}
-        </Text>
-      )}
     </YStack>
+  );
+}
+
+function ProfileHeader({ 
+  displayName, 
+  email, 
+  previewUri, 
+  onEditAvatar 
+}: { 
+  displayName: string;
+  email: string;
+  previewUri: string | null;
+  onEditAvatar: () => void;
+}) {
+  const theme = useTheme();
+  
+  return (
+    <YStack 
+      backgroundColor="$background"
+      borderRadius={24}
+      borderWidth={1}
+      borderColor="$gray5"
+      overflow="hidden"
+      shadowColor="$shadowColor"
+      shadowOffset={{ width: 0, height: 4 }}
+      shadowOpacity={0.1}
+      shadowRadius={16}
+      elevation={4}
+    >
+      {/* Banner */}
+      <LinearGradient
+        colors={['#10b981', '#059669', '#047857']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ height: 80 }}
+      />
+      
+      {/* Avatar Section */}
+      <YStack ai="center" marginTop={-48} gap="$3" paddingHorizontal="$5" paddingBottom="$5">
+        <Pressable onPress={onEditAvatar}>
+          <YStack position="relative">
+            <YStack
+              borderWidth={4}
+              borderColor="$background"
+              borderRadius={999}
+              shadowColor="$shadowColor"
+              shadowOffset={{ width: 0, height: 4 }}
+              shadowOpacity={0.15}
+              shadowRadius={8}
+              elevation={5}
+            >
+              <UserAvatar
+                uri={previewUri ?? undefined}
+                label={displayName.slice(0, 1).toUpperCase()}
+                size={96}
+                textSize={34}
+              />
+            </YStack>
+            <YStack
+              position="absolute"
+              bottom={0}
+              right={0}
+              backgroundColor="$green9"
+              borderRadius={20}
+              padding="$2"
+              borderWidth={3}
+              borderColor="$background"
+            >
+              <Camera size={16} color="white" />
+            </YStack>
+          </YStack>
+        </Pressable>
+        
+        <YStack ai="center" gap="$1">
+          <Text fontSize={22} fontWeight="800" letterSpacing={-0.5}>
+            {displayName}
+          </Text>
+          {email && (
+            <Text fontSize={14} color="$gray9" fontWeight="500">
+              {email}
+            </Text>
+          )}
+        </YStack>
+      </YStack>
+    </YStack>
+  );
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: string; onToggle: () => void }) {
+  const { t } = useTranslation();
+  const isDark = theme === 'dark';
+  
+  return (
+    <Pressable onPress={onToggle}>
+      <XStack
+        backgroundColor={isDark ? '$gray3' : '$yellow2'}
+        borderRadius={30}
+        padding="$1.5"
+        width={64}
+        height={36}
+        ai="center"
+        jc={isDark ? 'flex-end' : 'flex-start'}
+        animation="quick"
+        borderWidth={1}
+        borderColor={isDark ? '$gray5' : '$yellow5'}
+      >
+        <YStack
+          backgroundColor={isDark ? '$gray9' : '$yellow9'}
+          borderRadius={20}
+          width={28}
+          height={28}
+          ai="center"
+          jc="center"
+          animation="quick"
+        >
+          {isDark ? (
+            <Moon size={16} color="white" />
+          ) : (
+            <Sun size={16} color="white" />
+          )}
+        </YStack>
+      </XStack>
+    </Pressable>
   );
 }
 
@@ -288,17 +515,17 @@ export default function ProfileScreen() {
     'profile.avatar.hint',
     'Uploaded avatars are delivered via our CDN and refresh instantly.'
   );
-  const avatarUploadLabel = t('profile.avatar.upload', 'Upload from phone');
+  const avatarUploadLabel = t('profile.avatar.upload', 'Upload');
   const avatarUploadingLabel = t('profile.avatar.uploading', 'Uploading...');
-  const avatarResetLabel = t('profile.avatar.reset', 'Reset avatar');
+  const avatarResetLabel = t('profile.avatar.reset', 'Reset');
   const avatarResettingLabel = t('profile.avatar.resetting', 'Resetting...');
-  const userInfoTitle = t('profile.info.title', 'User information');
+  const userInfoTitle = t('profile.info.title', 'Profile information');
   const usernameLabel = t('profile.info.usernameLabel', 'Username');
   const usernamePlaceholder = t('profile.info.usernamePlaceholder', 'Enter a new username');
   const emailLabel = t('profile.info.emailLabel', 'Email');
   const emailPlaceholder = t('profile.info.emailPlaceholder', 'Enter a new email');
   const userIdLabel = t('profile.info.userId', 'User ID');
-  const passwordTitle = t('profile.password.title', 'Change password');
+  const passwordTitle = t('password.title', 'Security');
   const currentPasswordLabel = t('profile.password.currentLabel', 'Current password');
   const currentPasswordPlaceholder = t('profile.password.currentPlaceholder', 'Enter current password');
   const newPasswordLabel = t('profile.password.newLabel', 'New password');
@@ -309,7 +536,7 @@ export default function ProfileScreen() {
     'profile.password.requirements',
     'Password must be at least 8 characters and include uppercase, lowercase, number, and special symbol.'
   );
-  const passwordSubmitLabel = t('profile.password.submit', 'Change password');
+  const passwordSubmitLabel = t('profile.password.submit', 'Update password');
   const passwordUpdatingLabel = t('profile.password.updating', 'Updating...');
   const logoutLabel = t('profile.logout', 'Log out');
 
@@ -715,219 +942,218 @@ export default function ProfileScreen() {
         keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 }) ?? 0}
       >
         <ScrollView
-          style={{ flex: 1, backgroundColor: screenBg }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 32, backgroundColor: screenBg }}
+          style={{ flex: 1, backgroundColor: '$gray1' }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <ScreenContainer>
-            <YStack gap="$3" pb="$6">
-              {/* Avatar */}
-              <SectionCard
-                title={avatarTitle}
-                icon={<Upload size={18} color="$gray11" />}
-                successTrigger={successCounters.avatar}
-              >
-                <YStack ai="center" gap="$3">
-                  <UserAvatar
-                    uri={previewUri ?? undefined}
-                    label={displayName.slice(0, 1).toUpperCase()}
-                    size={96}
-                    textSize={34}
-                  />
-                  <Text fontSize={12} color="$gray10">
-                    {avatarHint}
-                  </Text>
-                  <XStack gap="$2" w="100%">
-                    <Button
-                      flex={1}
-                      size="$3"
-                      bg="$green9"
-                      color="white"
-                      icon={<Upload size={18} color="white" />}
-                      disabled={isSavingAvatar}
-                      onPress={handlePickFromLibrary}
-                    >
-                      {isSavingAvatar ? avatarUploadingLabel : avatarUploadLabel}
-                    </Button>
-                    <Button
-                      flex={1}
-                      size="$3"
-                      variant="outlined"
-                      icon={<RotateCcw size={18} color="$gray11" />}
-                      disabled={isResetDisabled}
-                      onPress={handleResetAvatar}
-                    >
-                      {isResettingAvatar ? avatarResettingLabel : avatarResetLabel}
-                    </Button>
-                  </XStack>
-                </YStack>
-              </SectionCard>
-
-              {/* Appearance / Theme */}
-              <SectionCard
-                title={t('settings.appearance.title', 'Appearance')}
-                icon={theme === 'dark' ? <Moon size={18} color="$gray11" /> : <Sun size={18} color="$gray11" />}
-              >
-                <YStack gap="$3">
-                  <Text fontSize={12} color="$gray9">
-                    {t('settings.appearance.description', 'Switch between light and dark theme.')}
-                  </Text>
-                  <XStack ai="center" jc="space-between">
-                    <XStack ai="center" gap="$2">
-                      {theme === 'dark' ? (
-                        <Moon size={18} color="$gray11" />
-                      ) : (
-                        <Sun size={18} color="$gray11" />
-                      )}
-                      <Text fontSize={15} fontWeight="600">
-                        {theme === 'dark'
-                          ? t('settings.appearance.dark', 'Dark mode')
-                          : t('settings.appearance.light', 'Light mode')}
-                      </Text>
-                    </XStack>
-                    <Button
-                      size="$3"
-                      variant="outlined"
-                      icon={
-                        theme === 'dark'
-                          ? <Sun size={16} color="$gray11" />
-                          : <Moon size={16} color="$gray11" />
-                      }
-                      onPress={toggleTheme}
-                    >
-                      {theme === 'dark'
-                        ? t('settings.appearance.switchLight', 'Light')
-                        : t('settings.appearance.switchDark', 'Dark')}
-                    </Button>
-                  </XStack>
-                </YStack>
-              </SectionCard>
-
-              {/* Language */}
-              <SectionCard
-                title={t('settings.language.title', 'Language')}
-                icon={<Languages size={18} color="$gray11" />}
-              >
-                <YStack gap="$2">
-                  <Text fontSize={12} color="$gray9">
-                    {t('settings.language.description', 'Choose the language used across the app.')}
-                  </Text>
-
-                  <LanguageSegmentedControl
-                    value={language}
-                    onChange={(code) => setLanguage(code)}
-                    getLabel={(code, fallback) => t(`settings.language.options.${code}`, fallback)}
-                  />
-                </YStack>
-              </SectionCard>
-
-
-              {/* User info */}
-              <SectionCard title={userInfoTitle} icon={<UserIcon size={18} color="$gray11" />}>
-                <EditableFieldRow
-                  label={usernameLabel}
-                  value={user?.username ?? ''}
-                  draft={usernameDraft}
-                  setDraft={setUsernameDraft}
-                  placeholder={usernamePlaceholder}
-                  isEditing={isEditingUsername}
-                  onStartEdit={() => setIsEditingUsername(true)}
-                  onCancelEdit={() => {
-                    setUsernameDraft(user?.username ?? '');
-                    setIsEditingUsername(false);
-                    setUsernameError(null);
-                  }}
-                  onSave={handleSaveUsername}
-                  status={usernameStatus}
-                  error={usernameError}
-                  onCopy={() => handleCopy(usernameLabel, user?.username)}
+          <YStack backgroundColor="$gray1">
+            <ScreenContainer>
+              <YStack gap="$4" pb="$6" paddingTop="$4">
+                {/* Profile Header Card */}
+                <ProfileHeader
+                  displayName={displayName}
+                  email={user?.email ?? ''}
+                  previewUri={previewUri}
+                  onEditAvatar={handlePickFromLibrary}
                 />
-                <Separator />
-                <EditableFieldRow
-                  label={emailLabel}
-                  value={user?.email ?? ''}
-                  draft={emailDraft}
-                  setDraft={setEmailDraft}
-                  placeholder={emailPlaceholder}
-                  isEditing={isEditingEmail}
-                  onStartEdit={() => setIsEditingEmail(true)}
-                  onCancelEdit={() => {
-                    setEmailDraft(user?.email ?? '');
-                    setIsEditingEmail(false);
-                    setEmailError(null);
-                  }}
-                  onSave={handleSaveEmail}
-                  status={emailStatus}
-                  error={emailError}
-                  onCopy={() => handleCopy(emailLabel, user?.email)}
-                  textInputProps={{ keyboardType: 'email-address', autoCapitalize: 'none', autoCorrect: false }}
-                />
-                <Separator />
-                <InfoRow
-                  label={userIdLabel}
-                  value={userId || notAvailableLabel}
-                  onCopy={() => handleCopy(userIdLabel, userId)}
-                />
-              </SectionCard>
 
-              {/* Password */}
-              <SectionCard
-                title={passwordTitle}
-                icon={<Lock size={18} color="$gray11" />}
-                successTrigger={successCounters.password}
-              >
-                <YStack gap="$3">
-                  <PasswordInput
-                    label={currentPasswordLabel}
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                    placeholder={currentPasswordPlaceholder}
-                    textInputProps={{ returnKeyType: 'next' }}
-                  />
-                  <PasswordInput
-                    label={newPasswordLabel}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    placeholder={newPasswordPlaceholder}
-                    textInputProps={{ returnKeyType: 'next' }}
-                  />
-                  <Text fontSize={12} color="$gray10">
-                    {passwordRequirements}
-                  </Text>
-                  <PasswordInput
-                    label={confirmPasswordLabel}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder={confirmPasswordPlaceholder}
-                    error={passwordError || undefined}
-                    textInputProps={{ returnKeyType: 'done' }}
-                  />
+                {/* Quick Avatar Actions */}
+                <XStack gap="$3">
                   <Button
-                    size="$3"
+                    flex={1}
+                    size="$4"
                     bg="$green9"
                     color="white"
-                    disabled={isChangingPassword}
-                    onPress={handleChangePassword}
+                    borderRadius={16}
+                    icon={<Upload size={18} color="white" />}
+                    disabled={isSavingAvatar}
+                    onPress={handlePickFromLibrary}
+                    pressStyle={{ scale: 0.97 }}
+                    fontWeight="600"
+                    letterSpacing={-0.3}
                   >
-                    {isChangingPassword ? passwordUpdatingLabel : passwordSubmitLabel}
+                    {isSavingAvatar ? avatarUploadingLabel : avatarUploadLabel}
                   </Button>
-                </YStack>
-              </SectionCard>
+                  <Button
+                    flex={1}
+                    size="$4"
+                    variant="outlined"
+                    borderRadius={16}
+                    borderColor="$gray6"
+                    icon={<RotateCcw size={18} color="$gray11" />}
+                    disabled={isResetDisabled}
+                    onPress={handleResetAvatar}
+                    pressStyle={{ scale: 0.97 }}
+                    fontWeight="600"
+                    letterSpacing={-0.3}
+                  >
+                    {isResettingAvatar ? avatarResettingLabel : avatarResetLabel}
+                  </Button>
+                </XStack>
 
-              {/* Logout */}
-              <Button
-                size="$3"
-                bg="$red4"
-                color="$red11"
-                hoverStyle={{ bg: '$red5' }}
-                pressStyle={{ bg: '$red6' }}
-                icon={<LogOut size={18} color="$red11" />}
-                onPress={handleLogout}
-              >
-                {logoutLabel}
-              </Button>
-            </YStack>
-          </ScreenContainer>
+                {/* Appearance Section */}
+                <SectionCard
+                  title={t('settings.appearance.title', 'Appearance')}
+                  icon={<Palette size={18} color="$green11" />}
+                >
+                  <XStack ai="center" jc="space-between">
+                    <XStack ai="center" gap="$3">
+                      {theme === 'dark' ? (
+                        <Moon size={20} color="$gray11" />
+                      ) : (
+                        <Sun size={20} color="$yellow11" />
+                      )}
+                      <YStack>
+                        <Text fontSize={15} fontWeight="600" letterSpacing={-0.3}>
+                          {theme === 'dark'
+                            ? t('settings.appearance.dark', 'Dark mode')
+                            : t('settings.appearance.light', 'Light mode')}
+                        </Text>
+                        <Text fontSize={12} color="$gray9">
+                          {t('settings.appearance.description', 'Switch between light and dark theme')}
+                        </Text>
+                      </YStack>
+                    </XStack>
+                    <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                  </XStack>
+                </SectionCard>
+
+                {/* Language Section */}
+                <SectionCard
+                  title={t('settings.language.title', 'Language')}
+                  icon={<Globe size={18} color="$green11" />}
+                >
+                  <YStack gap="$3">
+                    <Text fontSize={13} color="$gray9" lineHeight={18}>
+                      {t('settings.language.description', 'Choose the language used across the app.')}
+                    </Text>
+                    <LanguageSegmentedControl
+                      value={language}
+                      onChange={(code) => setLanguage(code)}
+                      getLabel={(code, fallback) => t(`settings.language.options.${code}`, fallback)}
+                    />
+                  </YStack>
+                </SectionCard>
+
+                {/* Profile Information */}
+                <SectionCard title={userInfoTitle} icon={<UserIcon size={18} color="$green11" />}>
+                  <EditableFieldRow
+                    label={usernameLabel}
+                    value={user?.username ?? ''}
+                    draft={usernameDraft}
+                    setDraft={setUsernameDraft}
+                    placeholder={usernamePlaceholder}
+                    isEditing={isEditingUsername}
+                    onStartEdit={() => setIsEditingUsername(true)}
+                    onCancelEdit={() => {
+                      setUsernameDraft(user?.username ?? '');
+                      setIsEditingUsername(false);
+                      setUsernameError(null);
+                    }}
+                    onSave={handleSaveUsername}
+                    status={usernameStatus}
+                    error={usernameError}
+                    onCopy={() => handleCopy(usernameLabel, user?.username)}
+                  />
+                  <Separator borderColor="$gray4" />
+                  <EditableFieldRow
+                    label={emailLabel}
+                    value={user?.email ?? ''}
+                    draft={emailDraft}
+                    setDraft={setEmailDraft}
+                    placeholder={emailPlaceholder}
+                    isEditing={isEditingEmail}
+                    onStartEdit={() => setIsEditingEmail(true)}
+                    onCancelEdit={() => {
+                      setEmailDraft(user?.email ?? '');
+                      setIsEditingEmail(false);
+                      setEmailError(null);
+                    }}
+                    onSave={handleSaveEmail}
+                    status={emailStatus}
+                    error={emailError}
+                    onCopy={() => handleCopy(emailLabel, user?.email)}
+                    textInputProps={{ keyboardType: 'email-address', autoCapitalize: 'none', autoCorrect: false }}
+                  />
+                  <Separator borderColor="$gray4" />
+                  <InfoRow
+                    label={userIdLabel}
+                    value={userId || notAvailableLabel}
+                    onCopy={() => handleCopy(userIdLabel, userId)}
+                  />
+                </SectionCard>
+
+                {/* Security Section */}
+                <SectionCard
+                  title={passwordTitle}
+                  icon={<Shield size={18} color="$green11" />}
+                  successTrigger={successCounters.password}
+                >
+                  <YStack gap="$4">
+                    <PasswordInput
+                      label={currentPasswordLabel}
+                      value={currentPassword}
+                      onChangeText={setCurrentPassword}
+                      placeholder={currentPasswordPlaceholder}
+                      textInputProps={{ returnKeyType: 'next' }}
+                    />
+                    <PasswordInput
+                      label={newPasswordLabel}
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholder={newPasswordPlaceholder}
+                      textInputProps={{ returnKeyType: 'next' }}
+                    />
+                    <YStack backgroundColor="$yellow2" borderRadius={12} padding="$3" borderWidth={1} borderColor="$yellow4">
+                      <Text fontSize={12} color="$yellow11" lineHeight={16} fontWeight="500">
+                        {passwordRequirements}
+                      </Text>
+                    </YStack>
+                    <PasswordInput
+                      label={confirmPasswordLabel}
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder={confirmPasswordPlaceholder}
+                      error={passwordError || undefined}
+                      textInputProps={{ returnKeyType: 'done' }}
+                    />
+                    <Button
+                      size="$4"
+                      bg="$green9"
+                      color="white"
+                      borderRadius={16}
+                      disabled={isChangingPassword}
+                      onPress={handleChangePassword}
+                      pressStyle={{ scale: 0.97 }}
+                      fontWeight="600"
+                      letterSpacing={-0.3}
+                      icon={<Lock size={18} color="white" />}
+                    >
+                      {isChangingPassword ? passwordUpdatingLabel : passwordSubmitLabel}
+                    </Button>
+                  </YStack>
+                </SectionCard>
+
+                {/* Logout Button */}
+                <Button
+                  size="$4"
+                  backgroundColor="$red4"
+                  color="$red11"
+                  borderRadius={16}
+                  hoverStyle={{ backgroundColor: '$red5' }}
+                  pressStyle={{ backgroundColor: '$red6', scale: 0.97 }}
+                  icon={<LogOut size={18} color="$red11" />}
+                  onPress={handleLogout}
+                  fontWeight="600"
+                  letterSpacing={-0.3}
+                  marginTop="$2"
+                >
+                  {logoutLabel}
+                </Button>
+              </YStack>
+            </ScreenContainer>
+          </YStack>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

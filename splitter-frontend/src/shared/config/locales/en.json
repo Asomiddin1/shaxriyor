@@ -61,6 +61,33 @@
       "greeting": "Hi, {{name}}!",
       "friendFallback": "friend"
     },
+    "stats": {
+      "totalSpent": "TOTAL SPENT",
+      "bills": "BILLS",
+      "avgBill": "AVG BILL",
+      "thisMonth": "THIS MONTH"
+    },
+    "summary": {
+      "thisMonth": "{{amount}} this month",
+      "billsSplit_one": "{{count}} bill split",
+      "billsSplit_other": "{{count}} bills split"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "seeAll": "See all",
+      "loading": "Loading transactions...",
+      "emptyTitle": "No transactions yet",
+      "emptySubtitle": "Scan a receipt to get started",
+      "scanReceipt": "Scan receipt",
+      "billFallback": "Bill",
+      "people_one": "{{count}} person",
+      "people_other": "{{count}} people"
+    },
+    "dates": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
+    },
     "scan": {
       "cta": "Scan invite"
     },

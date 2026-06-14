@@ -1,8 +1,8 @@
 // app/tabs/_layout.tsx
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Tabs, useRouter, usePathname } from "expo-router";
-import { Pressable, Animated, Dimensions } from "react-native";
+import { Pressable, Animated, Dimensions, Modal, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { YStack, XStack, Text, View } from "tamagui";
 import { Home, Settings, Bell, ChevronLeft, Menu } from "@tamagui/lucide-icons";
@@ -45,11 +45,14 @@ function DotBadge({ value }: { value?: number }) {
 
 function DrawerOverlay() {
   const { isOpen, close } = useDrawerStore();
+  const [mounted, setMounted] = useState(false);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (isOpen) {
+      // Mount the Modal first, then animate in.
+      setMounted(true);
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
@@ -76,49 +79,56 @@ function DrawerOverlay() {
           duration: 200,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        // Unmount the Modal only after the close animation completes.
+        setMounted(false);
+      });
     }
   }, [isOpen]);
 
   return (
-    <>
-      {/* Dark overlay */}
-      <Animated.View
-        pointerEvents={isOpen ? "auto" : "none"}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.5)",
-          opacity: overlayOpacity,
-          zIndex: 998,
-        }}
-      >
-        <Pressable style={{ flex: 1 }} onPress={close} />
-      </Animated.View>
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={close}
+    >
+      <Animated.View style={{ flex: 1 }}>
+        {/* Dark overlay */}
+        <Animated.View
+          pointerEvents={isOpen ? "auto" : "none"}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: "rgba(0,0,0,0.5)",
+              opacity: overlayOpacity,
+            },
+          ]}
+        >
+          <Pressable style={{ flex: 1 }} onPress={close} />
+        </Animated.View>
 
-      {/* Sidebar panel */}
-      <Animated.View
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          bottom: 0,
-          width: DRAWER_WIDTH,
-          transform: [{ translateX }],
-          zIndex: 999,
-          shadowColor: "#000",
-          shadowOffset: { width: 2, height: 0 },
-          shadowOpacity: 0.25,
-          shadowRadius: 8,
-          elevation: 10,
-        }}
-      >
-        <DrawerSidebar onClose={close} />
+        {/* Sidebar panel */}
+        <Animated.View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: DRAWER_WIDTH,
+            transform: [{ translateX }],
+            shadowColor: "#000",
+            shadowOffset: { width: 2, height: 0 },
+            shadowOpacity: 0.25,
+            shadowRadius: 8,
+            elevation: 10,
+          }}
+        >
+          <DrawerSidebar onClose={close} />
+        </Animated.View>
       </Animated.View>
-    </>
+    </Modal>
   );
 }
 
@@ -135,14 +145,15 @@ function GlobalTabsHeader(props: any) {
 
   const showHomeShortcut =
     routeName === "profile" ||
+    routeName === "about" ||
+    routeName === "help" ||
+    routeName === "public-offer" ||
+    routeName === "privacy-policy" ||
     routeName.startsWith("friends") ||
     routeName.startsWith("groups") ||
     routeName.startsWith("sessions");
 
-  const onBackToHome = useCallback(
-    () => router.replace("/tabs"),
-    [router]
-  );
+  const onBackToHome = useCallback(() => router.replace("/tabs"), [router]);
 
   useEffect(() => {
     fetchAll();
@@ -151,7 +162,7 @@ function GlobalTabsHeader(props: any) {
   useFocusEffect(
     useCallback(() => {
       fetchAll();
-    }, [fetchAll])
+    }, [fetchAll]),
   );
 
   useEffect(() => {
@@ -162,7 +173,7 @@ function GlobalTabsHeader(props: any) {
   }, [fetchAll]);
 
   const requestsCount = useFriendsStore(
-    (s) => s.requestsRaw?.incoming?.length ?? 0
+    (s) => s.requestsRaw?.incoming?.length ?? 0,
   );
   const displayName = user?.username || t("profile.labels.guest", "Guest");
   const userInitial = displayName.slice(0, 1).toUpperCase();
@@ -303,6 +314,30 @@ export default function TabLayout() {
           options={{
             href: null,
             title: profileTitle,
+          }}
+        />
+
+        {/* Info pages (sidebar) */}
+        <Tabs.Screen
+          name="about"
+          options={{ href: null, title: t("navigation.about", "About") }}
+        />
+        <Tabs.Screen
+          name="help"
+          options={{ href: null, title: t("navigation.help", "Help") }}
+        />
+        <Tabs.Screen
+          name="public-offer"
+          options={{
+            href: null,
+            title: t("navigation.publicOffer", "Public offer"),
+          }}
+        />
+        <Tabs.Screen
+          name="privacy-policy"
+          options={{
+            href: null,
+            title: t("navigation.privacy", "Privacy policy"),
           }}
         />
 

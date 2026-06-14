@@ -48,6 +48,33 @@
       "greeting": "Salom, {{name}}!",
       "friendFallback": "do'stim"
     },
+    "stats": {
+      "totalSpent": "JAMI SARFLANGAN",
+      "bills": "HISOBLAR",
+      "avgBill": "O'RTACHA",
+      "thisMonth": "SHU OY"
+    },
+    "summary": {
+      "thisMonth": "Shu oyda {{amount}}",
+      "billsSplit_one": "{{count}} ta hisob bo'lindi",
+      "billsSplit_other": "{{count}} ta hisob bo'lindi"
+    },
+    "transactions": {
+      "title": "Tranzaksiyalar",
+      "seeAll": "Barchasi",
+      "loading": "Tranzaksiyalar yuklanmoqda...",
+      "emptyTitle": "Hali tranzaksiyalar yo'q",
+      "emptySubtitle": "Boshlash uchun chekni skanerlang",
+      "scanReceipt": "Chekni skanerlash",
+      "billFallback": "Hisob",
+      "people_one": "{{count}} kishi",
+      "people_other": "{{count}} kishi"
+    },
+    "dates": {
+      "today": "Bugun",
+      "yesterday": "Kecha",
+      "earlier": "Avvalroq"
+    },
     "scan": {
       "cta": "Taklifni skanerlang"
     },

@@ -2,7 +2,8 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import multer from "multer";
 import { authenticateToken } from "../middleware/auth.js";
-import { uploadAvatarObject } from "../config/r2.js";
+import { isR2Configured, uploadAvatarObject } from "../config/r2.js";
+import { saveLocalObject } from "../config/localStorage.js";
 import { prisma } from "../config/prisma.js";
 
 type UploadFile = {
@@ -130,16 +131,42 @@ router.post(
       const v = Math.floor(Date.now() / 1000);
       const key = `avatars/${req.user.id}/v${v}/avatar${ext}`;
 
-      const put = await uploadAvatarObject(key, buffer, mimetype);
+      let avatarUrl: string;
+      let storedKey: string;
+
+      if (isR2Configured()) {
+        // Production / configured: upload to Cloudflare R2 and use the CDN URL.
+        const put = await uploadAvatarObject(key, buffer, mimetype);
+        avatarUrl = put.url;
+        storedKey = put.key;
+      } else {
+        // Dev fallback: store on local disk and serve via express.static.
+        // Build an absolute URL from the request host so devices on the LAN
+        // (and the simulator) can load the image.
+        const saved = await saveLocalObject(key, buffer);
+        const host = req.get("host");
+        const proto =
+          (req.headers["x-forwarded-proto"] as string | undefined) ||
+          req.protocol ||
+          "http";
+        avatarUrl = host
+          ? `${proto}://${host}${saved.publicPath}`
+          : saved.publicPath;
+        storedKey = saved.key;
+        console.warn(
+          "[uploads/avatar] R2 not configured — saved avatar locally:",
+          avatarUrl
+        );
+      }
 
       // Persist URL to user
       await prisma.user.update({
         where: { id: req.user.id },
-        data: { avatarUrl: put.url },
+        data: { avatarUrl },
         select: { id: true },
       });
 
-      res.json({ success: true, avatarUrl: put.url, key: put.key });
+      res.json({ success: true, avatarUrl, key: storedKey });
       return;
     } catch (err) {
       console.error("POST /uploads/avatar error:", err);

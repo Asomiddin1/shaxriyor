@@ -30,6 +30,8 @@ import UserAvatar from '@/shared/ui/UserAvatar';
 import type { SessionHistoryEntry } from '@/features/sessions/api/history.api';
 import { useSessionsHistoryStore } from '@/features/sessions/model/history.store';
 import { useAppStore } from '@/shared/lib/stores/app-store';
+// STORE'NI TO'G'RI YO'LDAN CHAQIRING (1-qadamda yaratilgan fayl)
+import { useCurrencyStore } from '@/shared/lib/stores/currency.store'; 
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_H = 200;
@@ -38,45 +40,80 @@ const DEFAULT_CURRENCY = 'UZS';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-const fmt = (n: number, currency: string = DEFAULT_CURRENCY, locale = 'en') =>
-  `${n.toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ${currency}`;
-
-const fmtShort = (value: number): string => {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return String(value);
+const getSafeLocale = (locale: string) => {
+  if (locale.startsWith('jp') || locale.startsWith('ja')) return 'ja-JP';
+  if (locale.startsWith('uz')) return 'uz-UZ';
+  return 'en-US';
 };
 
-const fmtDate = (iso?: string) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en', { day: '2-digit', month: 'short' });
-};
-
-const fmtDateTime = (iso?: string) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('en', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-// pick dominant currency from sessions list
-function dominantCurrency(sessions: SessionHistoryEntry[]): string {
-  if (!sessions.length) return DEFAULT_CURRENCY;
-  const counts: Record<string, number> = {};
-  for (const s of sessions) {
-    const c = s.currency || s.payload?.totals?.currency || DEFAULT_CURRENCY;
-    counts[c] = (counts[c] ?? 0) + 1;
+const fmtNumber = (n: number, locale = 'en'): string => {
+  const value = Math.round(n || 0);
+  try {
+    return value.toLocaleString(getSafeLocale(locale), {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  } catch {
+    const str = value.toString();
+    if (locale.startsWith('uz')) {
+      return str.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+    return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
-  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? DEFAULT_CURRENCY;
-}
+};
+
+const fmtMoney = (
+  n: number,
+  currency: string = DEFAULT_CURRENCY,
+  locale = 'en'
+): string => {
+  const value = Math.round(n || 0);
+  const safeLocale = getSafeLocale(locale);
+
+  // UZS uchun maxsus holat: valyuta belgisi doim raqamdan keyin turishi uchun
+  // Intl.NumberFormat'ni chetlab o'tamiz.
+  if (currency === 'UZS') {
+    const formattedNum = fmtNumber(value, locale);
+    if (locale.startsWith('uz')) return `${formattedNum} so'm`;
+    return `${formattedNum} UZS`;
+  }
+
+  // Boshqa valyutalar uchun standart format (USD va JPY o'z joyida to'g'ri ishlaydi)
+  try {
+    return new Intl.NumberFormat(safeLocale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    const formattedNum = fmtNumber(value, locale);
+    if (currency === 'JPY') return `¥${formattedNum}`;
+    if (currency === 'USD') return `$${formattedNum}`;
+    return `${formattedNum} ${currency}`;
+  }
+};
+
+const fmtDate = (iso?: string, locale = 'en') => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(getSafeLocale(locale), { day: '2-digit', month: 'short' });
+};
+
+// YANGA FUNKSIYA: Kurslar bo'yicha pulni konvertatsiya qilish
+const convertCurrency = (
+  amount: number,
+  fromCurrency: string,
+  toCurrency: string,
+  rates: Record<string, number>
+): number => {
+  if (fromCurrency === toCurrency || !rates[fromCurrency] || !rates[toCurrency]) {
+    return amount;
+  }
+  const inBase = amount / rates[fromCurrency];
+  return inBase * rates[toCurrency];
+};
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
@@ -89,8 +126,12 @@ interface Stats {
   currency: string;
 }
 
-function computeStats(sessions: SessionHistoryEntry[]): Stats {
-  const currency = dominantCurrency(sessions);
+// Barcha statiskalarni bitta (tanlangan) valyutada hisoblaymiz
+function computeStats(
+  sessions: SessionHistoryEntry[],
+  targetCurrency: string,
+  rates: Record<string, number>
+): Stats {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
@@ -99,13 +140,16 @@ function computeStats(sessions: SessionHistoryEntry[]): Stats {
   let thisMonthBills = 0;
 
   for (const s of sessions) {
-    const c = s.currency || s.payload?.totals?.currency || DEFAULT_CURRENCY;
-    if (c !== currency) continue;
+    const originalCurrency = s.currency || s.payload?.totals?.currency || DEFAULT_CURRENCY;
     const amount = s.grandTotal ?? 0;
-    totalSpent += amount;
+    
+    // API orqali valyutani konvertatsiya qilamiz
+    const convertedAmount = convertCurrency(amount, originalCurrency, targetCurrency, rates);
+    
+    totalSpent += convertedAmount;
     const ts = s.finalizedAt ? new Date(s.finalizedAt).getTime() : 0;
     if (ts >= monthStart) {
-      thisMonthSpent += amount;
+      thisMonthSpent += convertedAmount;
       thisMonthBills++;
     }
   }
@@ -116,13 +160,22 @@ function computeStats(sessions: SessionHistoryEntry[]): Stats {
     avgBill: sessions.length ? Math.round(totalSpent / sessions.length) : 0,
     thisMonthSpent,
     thisMonthBills,
-    currency,
+    currency: targetCurrency,
   };
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
-function BalanceCard({ stats, username }: { stats: Stats; username: string }) {
+function BalanceCard({
+  stats,
+  username,
+  locale,
+}: {
+  stats: Stats;
+  username: string;
+  locale: string;
+}) {
+  const { t } = useTranslation();
   return (
     <View style={S.cardWrap} mx="$4" mb="$4">
       <LinearGradient
@@ -135,15 +188,19 @@ function BalanceCard({ stats, username }: { stats: Stats; username: string }) {
         <RNView style={S.circle2} />
 
         <XStack jc="space-between" ai="center" mb="$2">
-          <YStack>
+          <YStack f={1} pr="$2">
             <Text color="rgba(255,255,255,0.6)" fontSize={11} fontWeight="500" letterSpacing={1}>
-              TOTAL SPENT
+              {t('home.stats.totalSpent', 'TOTAL SPENT')}
             </Text>
-            <Text color="white" fontSize={28} fontWeight="800" mt={2}>
-              {fmtShort(stats.totalSpent)}{' '}
-              <Text color="rgba(255,255,255,0.7)" fontSize={14} fontWeight="500">
-                {stats.currency}
-              </Text>
+            <Text
+              color="white"
+              fontSize={26}
+              fontWeight="800"
+              mt={2}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {fmtMoney(stats.totalSpent, stats.currency, locale)}
             </Text>
           </YStack>
           <View
@@ -160,22 +217,22 @@ function BalanceCard({ stats, username }: { stats: Stats; username: string }) {
           </View>
         </XStack>
 
-        <View h={0.5} backgroundColor="rgba(255,255,255,0.12)" my="$2" />
+        <View h={0.5} backgroundColor="hsla(0, 0%, 100%, 0.12)" my="$2" />
 
         <XStack jc="space-between" ai="center">
           <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">BILLS</Text>
-            <Text color="white" fontSize={18} fontWeight="700" mt={2}>{stats.totalBills}</Text>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">{t('home.stats.bills', 'BILLS')}</Text>
+            <Text color="white" fontSize={16} fontWeight="700" mt={2} numberOfLines={1} adjustsFontSizeToFit>{stats.totalBills}</Text>
           </YStack>
           <View w={0.5} h={32} backgroundColor="rgba(255,255,255,0.12)" />
-          <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">AVG BILL</Text>
-            <Text color="white" fontSize={18} fontWeight="700" mt={2}>{fmtShort(stats.avgBill)}</Text>
+          <YStack ai="center" f={1} px={4}>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">{t('home.stats.avgBill', 'AVG BILL')}</Text>
+            <Text color="white" fontSize={16} fontWeight="700" mt={2} numberOfLines={1} adjustsFontSizeToFit>{fmtMoney(stats.avgBill, stats.currency, locale)}</Text>
           </YStack>
           <View w={0.5} h={32} backgroundColor="rgba(255,255,255,0.12)" />
-          <YStack ai="center" f={1}>
-            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">THIS MONTH</Text>
-            <Text color="#2ECC71" fontSize={18} fontWeight="700" mt={2}>{fmtShort(stats.thisMonthSpent)}</Text>
+          <YStack ai="center" f={1} px={4}>
+            <Text color="rgba(255,255,255,0.5)" fontSize={10} fontWeight="500">{t('home.stats.thisMonth', 'THIS MONTH')}</Text>
+            <Text color="#2ECC71" fontSize={16} fontWeight="700" mt={2} numberOfLines={1} adjustsFontSizeToFit>{fmtMoney(stats.thisMonthSpent, stats.currency, locale)}</Text>
           </YStack>
         </XStack>
       </LinearGradient>
@@ -186,19 +243,26 @@ function BalanceCard({ stats, username }: { stats: Stats; username: string }) {
 function TxRow({
   bill,
   onPress,
-  currency,
+  targetCurrency,
+  rates,
   locale,
 }: {
   bill: SessionHistoryEntry;
   onPress: () => void;
-  currency: string;
+  targetCurrency: string;
+  rates: Record<string, number>;
   locale: string;
 }) {
-  const amount = bill.grandTotal ?? 0;
-  const c = bill.currency || bill.payload?.totals?.currency || currency;
-  const date = fmtDate(bill.finalizedAt || bill.createdAt);
+  const originalCurrency = bill.currency || bill.payload?.totals?.currency || DEFAULT_CURRENCY;
+  const originalAmount = bill.grandTotal ?? 0;
+  
+  // Tranzaksiyani ham foydalanuvchi ko'rib turgan valyutaga konvertatsiya qilamiz
+  const amount = convertCurrency(originalAmount, originalCurrency, targetCurrency, rates);
+
+  const date = fmtDate(bill.finalizedAt || bill.createdAt, locale);
   const participantCount = bill.participantUniqueIds?.length ?? 0;
   const isCreator = bill.isCreator;
+  const { t } = useTranslation();
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
@@ -208,14 +272,14 @@ function TxRow({
         </View>
         <YStack f={1} gap={2}>
           <Text fontSize={14} fontWeight="600" color="$color12" numberOfLines={1}>
-            {bill.sessionName || 'Bill'}
+            {bill.sessionName || t('home.transactions.billFallback', 'Bill')}
           </Text>
           <XStack ai="center" gap="$1.5">
             <Text fontSize={11} color="$gray9">{date}</Text>
             {participantCount > 0 && (
               <>
                 <Text fontSize={11} color="$gray6">·</Text>
-                <Text fontSize={11} color="$gray9">{participantCount} people</Text>
+                <Text fontSize={11} color="$gray9">{t('home.transactions.people', { count: participantCount })}</Text>
               </>
             )}
           </XStack>
@@ -227,11 +291,11 @@ function TxRow({
             ) : (
               <ArrowDownLeft size={13} color="#6366F1" />
             )}
-            <Text fontSize={15} fontWeight="700" color={isCreator ? '#2ECC71' : '#6366F1'}>
-              {fmtShort(amount)}
+            <Text fontSize={15} fontWeight="700" color={isCreator ? '#2ECC71' : '#6366F1'} numberOfLines={1}>
+              {fmtMoney(amount, targetCurrency, locale)}
             </Text>
           </XStack>
-          <Text fontSize={10} color="$gray8" fontWeight="500">{c}</Text>
+          <Text fontSize={10} color="$gray8" fontWeight="500">{targetCurrency}</Text>
         </YStack>
       </XStack>
     </Pressable>
@@ -247,7 +311,6 @@ export default function HomePage() {
   const themeColors = useTheme();
   const screenBg = themeColors.background?.val ?? '#ffffff';
   const insets = useSafeAreaInsets();
-  // Pastdagi suzuvchi tab bar (~56px) + safe area ortida kontent yashirinmasligi uchun
   const scrollPaddingBottom = insets.bottom + 80;
 
   const sessions = useSessionsHistoryStore((s) => s.sessions);
@@ -258,8 +321,16 @@ export default function HomePage() {
   const refreshIfStale = useSessionsHistoryStore((s) => s.refreshIfStale);
   const forceRefresh = useSessionsHistoryStore((s) => s.forceRefresh);
 
+  // Valyuta Store
+  const { rates, targetCurrency, fetchRates, setTargetCurrency } = useCurrencyStore();
+
   const hasFetchedRef = useRef(false);
   const [refreshing, setRefreshing] = React.useState(false);
+
+  // Komponent yuklanganda API orqali kurslarni bir marta tortamiz
+  useEffect(() => {
+    fetchRates();
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -281,13 +352,14 @@ export default function HomePage() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      await fetchRates(); // Valyuta kurslarini ham yangilaymiz
       await forceRefresh(HOME_HISTORY_LIMIT);
     } finally {
       setRefreshing(false);
     }
-  }, [forceRefresh]);
+  }, [forceRefresh, fetchRates]);
 
-  const stats = useMemo(() => computeStats(sessions), [sessions]);
+  const stats = useMemo(() => computeStats(sessions, targetCurrency, rates), [sessions, targetCurrency, rates]);
   const locale = i18n.language ?? 'en';
   const username = user?.username ?? 'there';
 
@@ -297,12 +369,12 @@ export default function HomePage() {
     yesterday.setDate(today.getDate() - 1);
 
     const toLabel = (iso?: string) => {
-      if (!iso) return 'Earlier';
+      if (!iso) return t('home.dates.earlier', 'Earlier');
       const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return 'Earlier';
-      if (d.toDateString() === today.toDateString()) return 'Today';
-      if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-      return d.toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'short' });
+      if (Number.isNaN(d.getTime())) return t('home.dates.earlier', 'Earlier');
+      if (d.toDateString() === today.toDateString()) return t('home.dates.today', 'Today');
+      if (d.toDateString() === yesterday.toDateString()) return t('home.dates.yesterday', 'Yesterday');
+      return d.toLocaleDateString(getSafeLocale(locale), { weekday: 'long', day: 'numeric', month: 'short' });
     };
 
     const result: { label: string; items: SessionHistoryEntry[] }[] = [];
@@ -317,11 +389,16 @@ export default function HomePage() {
       result[result.length - 1].items.push(s);
     }
     return result;
-  }, [sessions]);
+  }, [sessions, locale, t]);
+
+  // Valyutani bosilganda UZS -> USD -> JPY -> UZS ga o'zgartirish qismi
+  const toggleCurrency = () => {
+    if (targetCurrency === 'UZS') setTargetCurrency('USD');
+    else if (targetCurrency === 'USD') setTargetCurrency('JPY');
+    else setTargetCurrency('UZS');
+  };
 
   return (
-    // ✅ FIX: RNView(flex:1) wraps ScrollView so it has a bounded height.
-    // Without this, ScrollView expands to fit all content and never scrolls.
     <RNView style={[S.container, { backgroundColor: screenBg }]}>
       <ScrollView
         style={S.scroll}
@@ -331,12 +408,24 @@ export default function HomePage() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2ECC71" />
         }
       >
-        {/* ── Balance card ── */}
         <View pt="$4">
-          <BalanceCard stats={stats} username={username} />
+          {/* TUGMA SHU YERGA QO'SHILDI */}
+          <XStack ai="center" jc="flex-end" px="$4" pb="$3">
+            <Pressable onPress={toggleCurrency}>
+              <View px="$3" py="$1.5" br={16} backgroundColor="$gray3" borderWidth={1} borderColor="$gray4">
+                <XStack ai="center" gap="$1.5">
+                  <Text fontSize={12} fontWeight="700" color="$color11">
+                    {targetCurrency}
+                  </Text>
+                  <Text fontSize={11}>🔄</Text>
+                </XStack>
+              </View>
+            </Pressable>
+          </XStack>
+
+          <BalanceCard stats={stats} username={username} locale={locale} />
         </View>
 
-        {/* ── This month summary strip ── */}
         {stats.thisMonthBills > 0 && (
           <XStack
             mx="$4"
@@ -354,57 +443,59 @@ export default function HomePage() {
             </View>
             <YStack f={1}>
               <Text fontSize={13} fontWeight="700" color="#166534">
-                {fmt(stats.thisMonthSpent, stats.currency, locale)} this month
+                {t('home.summary.thisMonth', {
+                  amount: fmtMoney(stats.thisMonthSpent, targetCurrency, locale),
+                  defaultValue: '{{amount}} this month',
+                })}
               </Text>
               <Text fontSize={11} color="#4ADE80">
-                {stats.thisMonthBills} bill{stats.thisMonthBills !== 1 ? 's' : ''} split
+                {t('home.summary.billsSplit', {
+                  count: stats.thisMonthBills,
+                  defaultValue: '{{count}} bills split',
+                })}
               </Text>
             </YStack>
           </XStack>
         )}
 
-        {/* ── Transactions ── */}
         <View mx="$4" mb="$2">
           <XStack ai="center" jc="space-between">
-            <Text fontSize={17} fontWeight="700" color="$color12">Transactions</Text>
+            <Text fontSize={17} fontWeight="700" color="$color12">{t('home.transactions.title', 'Transactions')}</Text>
             <Pressable onPress={() => router.push('/tabs/sessions/history/')}>
               <XStack ai="center" gap={4}>
-                <Text fontSize={13} color="#2ECC71" fontWeight="600">See all</Text>
+                <Text fontSize={13} color="#2ECC71" fontWeight="600">{t('home.transactions.seeAll', 'See all')}</Text>
                 <ChevronRight size={14} color="#2ECC71" />
               </XStack>
             </Pressable>
           </XStack>
         </View>
 
-        {/* Loading state */}
         {loading && !refreshing && (
           <YStack ai="center" py="$6">
-            <Text color="$gray9" fontSize={14}>Loading transactions...</Text>
+            <Text color="$gray9" fontSize={14}>{t('home.transactions.loading', 'Loading transactions...')}</Text>
           </YStack>
         )}
 
-        {/* Empty state */}
         {!loading && sessions.length === 0 && (
           <YStack ai="center" py="$8" gap="$3">
             <View w={72} h={72} br={24} ai="center" jc="center" backgroundColor="$gray3">
               <ReceiptText size={32} color="$gray8" />
             </View>
             <YStack ai="center" gap="$1">
-              <Text fontSize={16} fontWeight="600" color="$gray10">No transactions yet</Text>
-              <Text fontSize={13} color="$gray8">Scan a receipt to get started</Text>
+              <Text fontSize={16} fontWeight="600" color="$gray10">{t('home.transactions.emptyTitle', 'No transactions yet')}</Text>
+              <Text fontSize={13} color="$gray8">{t('home.transactions.emptySubtitle', 'Scan a receipt to get started')}</Text>
             </YStack>
             <Pressable onPress={() => router.push('/tabs/scan-receipt')}>
               <View px="$5" py="$3" br={12} backgroundColor="#2ECC71" mt="$1">
                 <XStack ai="center" gap="$2">
                   <ScanLine size={16} color="white" />
-                  <Text fontSize={14} fontWeight="700" color="white">Scan receipt</Text>
+                  <Text fontSize={14} fontWeight="700" color="white">{t('home.transactions.scanReceipt', 'Scan receipt')}</Text>
                 </XStack>
               </View>
             </Pressable>
           </YStack>
         )}
 
-        {/* Grouped transaction list */}
         {grouped.map(({ label, items }) => (
           <View key={label} mb="$2">
             <XStack px="$4" py="$2" ai="center">
@@ -417,7 +508,8 @@ export default function HomePage() {
                 <TxRow
                   key={bill.sessionId}
                   bill={bill}
-                  currency={stats.currency}
+                  targetCurrency={targetCurrency} // Konvertatsiya uchun uzatamiz
+                  rates={rates}                   // Konvertatsiya uchun uzatamiz
                   locale={locale}
                   onPress={() =>
                     router.push({
@@ -438,16 +530,13 @@ export default function HomePage() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const S = StyleSheet.create({
-  // ✅ FIX: outer container bounds the height so ScrollView can scroll
   container: {
     flex: 1,
     backgroundColor: 'white',
   },
-  // ✅ FIX: scroll fills its bounded parent
   scroll: {
     flex: 1,
   },
-  // ✅ bottom padding so last card isn't hidden behind tab bar
   scrollContent: {
     paddingBottom: 32,
   },

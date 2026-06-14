@@ -61,6 +61,33 @@
       "greeting": "{{name}}さん、こんにちは！",
       "friendFallback": "友だち"
     },
+    "stats": {
+      "totalSpent": "合計支出",
+      "bills": "明細数",
+      "avgBill": "平均",
+      "thisMonth": "今月"
+    },
+    "summary": {
+      "thisMonth": "今月 {{amount}}",
+      "billsSplit_one": "{{count}} 件の明細を分割",
+      "billsSplit_other": "{{count}} 件の明細を分割"
+    },
+    "transactions": {
+      "title": "取引",
+      "seeAll": "すべて表示",
+      "loading": "取引を読み込み中...",
+      "emptyTitle": "まだ取引がありません",
+      "emptySubtitle": "レシートをスキャンして始めましょう",
+      "scanReceipt": "レシートをスキャン",
+      "billFallback": "明細",
+      "people_one": "{{count}} 人",
+      "people_other": "{{count}} 人"
+    },
+    "dates": {
+      "today": "今日",
+      "yesterday": "昨日",
+      "earlier": "それ以前"
+    },
     "scan": {
       "cta": "招待をスキャンする"
     },

@@ -10,20 +10,32 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use(async (config) => {
+  // For multipart uploads we must let the platform set the Content-Type so the
+  // multipart boundary is generated automatically. Forcing 'multipart/form-data'
+  // (without a boundary) or 'application/json' breaks the upload on the server.
+  const isFormData =
+    typeof FormData !== 'undefined' && config.data instanceof FormData;
+
   try {
     const token = await getToken();
-    if (token) {
-      const headers: any = config.headers ?? {};
-      if (typeof headers.set === 'function') {
-        headers.set('Authorization', `Bearer ${token}`);
-        headers.set('Content-Type', headers.get?.('Content-Type') ?? 'application/json');
-      } else {
-        config.headers = {
-          ...headers,
-          Authorization: `Bearer ${token}`,
-          'Content-Type': headers['Content-Type'] ?? 'application/json',
-        };
+    const headers: any = config.headers ?? {};
+
+    if (typeof headers.set === 'function') {
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      if (isFormData) {
+        headers.delete?.('Content-Type');
+      } else if (!headers.get?.('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
       }
+      config.headers = headers;
+    } else {
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (isFormData) {
+        delete headers['Content-Type'];
+      } else if (!headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      config.headers = headers;
     }
   } catch {
     // If token retrieval fails we keep going; request will likely return 401.
@@ -183,9 +195,9 @@ export interface UploadAvatarResponse {
 }
 
 export async function uploadAvatar(formData: FormData): Promise<UploadAvatarResponse> {
-  const { data } = await apiClient.post<UploadAvatarResponse>('/uploads/avatar', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  // Do NOT set Content-Type manually here. Axios/React Native will set
+  // 'multipart/form-data' together with the required boundary automatically.
+  const { data } = await apiClient.post<UploadAvatarResponse>('/uploads/avatar', formData);
   return data;
 }
 

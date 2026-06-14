@@ -19,6 +19,7 @@ import {
   FileText,
   ShieldCheck,
   Moon, // <-- Moon ikonkasini import qildik
+  Sun,
 } from "@tamagui/lucide-icons";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,7 @@ interface DrawerMenuItem {
   icon: typeof Home;
   path?: string;
   action?: () => void;
+  keepOpen?: boolean;
   section: "main" | "secondary" | "info";
 }
 
@@ -43,7 +45,7 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useTranslation();
-  const { user, logout } = useAppStore();
+  const { user, logout, theme, toggleTheme } = useAppStore();
 
   const displayName = user?.username || t("profile.labels.guest", "Guest");
   const userEmail = user?.email || "";
@@ -58,10 +60,9 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
     } catch (e) {}
   };
 
-  // Tungi rejimni o'zgartirish funksiyasi (o'zgarish logikasini shu yerda yozasiz)
+  // Tungi rejimni o'zgartirish funksiyasi
   const handleToggleDarkMode = () => {
-    // console.log("Dark mode toggle logic goes here");
-    // themeStore.toggleTheme();
+    toggleTheme();
   };
 
   const menuItems: DrawerMenuItem[] = [
@@ -75,9 +76,13 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
     // Dark mode tugmasi Settings tagidan qo'shildi
     {
       key: "dark-mode",
-      label: t("navigation.darkMode", "Tungi rejim"),
-      icon: Moon,
+      label:
+        theme === "dark"
+          ? t("navigation.lightMode", "Kunduzgi rejim")
+          : t("navigation.darkMode", "Tungi rejim"),
+      icon: theme === "dark" ? Sun : Moon,
       action: handleToggleDarkMode,
+      keepOpen: true,
       section: "secondary",
     },
     {
@@ -138,7 +143,7 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
     const Icon = item.icon;
     const onPress = item.action
       ? () => {
-          onClose();
+          if (!item.keepOpen) onClose();
           item.action!();
         }
       : () => handleNavigate(item.path!);

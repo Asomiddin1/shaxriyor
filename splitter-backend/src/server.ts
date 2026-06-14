@@ -13,6 +13,7 @@ import usersRoutes from "./routes/users.js";
 import uploadsRoutes from "./routes/uploads.js";
 import { logAuthAttempts } from "./middleware/logAuth.js";
 import debugRoutes from "./routes/debug.js";
+import { LOCAL_UPLOAD_ROOT, LOCAL_UPLOAD_ROUTE } from "./config/localStorage.js";
 
 // Load .env
 dotenv.config();
@@ -77,6 +78,9 @@ if (allowAllCors) {
 
 // Swagger UI
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Serve locally-stored uploads (avatars) when Cloudflare R2 isn't configured.
+app.use(LOCAL_UPLOAD_ROUTE, express.static(LOCAL_UPLOAD_ROOT));
 
 // Auth routes with logging
 app.use("/auth", logAuthAttempts, authRoutes);
