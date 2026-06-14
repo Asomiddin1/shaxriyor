@@ -3,16 +3,21 @@ import { YStack, XStack, Paragraph, Input, ScrollView, Spinner, Separator, Text 
 import { useRouter } from 'expo-router';
 import { Search } from '@tamagui/lucide-icons';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // <-- SHU QO'SHILDI
 import { useFriendsStore } from '@/features/friends/model/friends.store';
 import { FriendListItem } from '@/features/friends/ui/FriendListItem';
 import Fab from '@/shared/ui/Fab';
 import { ScreenContainer } from '@/shared/ui/ScreenContainer';
+import { View } from 'react-native';
 
 export default function FriendsScreen() {
   const { friends, loading, error, fetchAll } = useFriendsStore();
   const router = useRouter();
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Pastki menyu balandligi va telefonning ekran chetini hisoblash uchun
+  const insets = useSafeAreaInsets(); 
 
   useEffect(() => {
     fetchAll();
@@ -80,7 +85,7 @@ export default function FriendsScreen() {
           )}
           
           {filteredFriends.length === 0 && !loading && (
-             <Paragraph ta="center" col="$gray10" mt="$4">
+             <Paragraph ta="center" col="$gray10" mt="">
                 {searchQuery
                   ? t('friends.search.noResults', 'No friends found')
                   : t('friends.empty', 'No friends yet. Tap + to add.')
@@ -90,7 +95,15 @@ export default function FriendsScreen() {
         </ScrollView>
       </YStack>
 
-      <Fab onPress={() => router.push('/tabs/friends/requests')} />
+      {/* TUGMA SHU YERDA TEPARAMQQA OLINDI */}
+ <YStack 
+        position="absolute" 
+        right={16} 
+        bottom={insets.bottom + 80} 
+        zIndex={100}
+      >
+        <Fab onPress={() => router.push('/tabs/friends/requests')} />
+      </YStack>
     </YStack>
   );
 }

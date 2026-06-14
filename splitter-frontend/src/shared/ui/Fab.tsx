@@ -2,7 +2,10 @@
 import { Button } from 'tamagui';
 import { Plus } from '@tamagui/lucide-icons';
 
-type Props = { onPress: () => void };
+interface Props {
+  onPress: () => void;
+  bottom?: number; 
+}
 
 export default function Fab({ onPress }: Props) {
   return (
