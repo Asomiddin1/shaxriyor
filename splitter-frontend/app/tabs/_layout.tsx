@@ -9,7 +9,6 @@ import { Home, Settings, Bell, ChevronLeft, Menu } from "@tamagui/lucide-icons";
 import { useTranslation } from "react-i18next";
 import { AppState } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-
 import { useAppStore } from "@/shared/lib/stores/app-store";
 import UserAvatar from "@/shared/ui/UserAvatar";
 import { useFriendsStore } from "@/features/friends/model/friends.store";
@@ -19,7 +18,7 @@ import { useDrawerStore } from "@/shared/lib/stores/drawer-store";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.8;
-const TAB_BAR_HEIGHT = 60; // CustomTabBar balandligi
+const TAB_BAR_HEIGHT = 60;
 
 // --- Reusable Badge Component ---
 function DotBadge({ value }: { value?: number }) {
@@ -45,13 +44,15 @@ function DotBadge({ value }: { value?: number }) {
 
 function DrawerOverlay() {
   const { isOpen, close } = useDrawerStore();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
+// app/tabs/_layout.tsx faylidagi DrawerOverlay qismi:
+
   useEffect(() => {
     if (isOpen) {
-      // Mount the Modal first, then animate in.
       setMounted(true);
       Animated.parallel([
         Animated.spring(translateX, {
@@ -67,6 +68,17 @@ function DrawerOverlay() {
         }),
       ]).start();
     } else {
+      // ⚡ YECHIM: Animatsiya tugashini kutmasdan, darhol sahifaga o'tamiz!
+      const pending = useDrawerStore.getState().pendingRoute;
+      if (pending) {
+        useDrawerStore.getState().clearPendingRoute();
+        // Bor-yo'g'i 10ms kutamiz (React eventlar to'qnashmasligi uchun)
+        setTimeout(() => {
+          router.push(pending as any);
+        }, 10);
+      }
+
+      // Orqa fonda menyu yopilaveradi
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: -DRAWER_WIDTH,
@@ -79,13 +91,12 @@ function DrawerOverlay() {
           duration: 200,
           useNativeDriver: true,
         }),
-      ]).start(() => {
-        // Unmount the Modal only after the close animation completes.
+      ]).start(({ finished }) => {
+        if (!finished) return;
         setMounted(false);
       });
     }
   }, [isOpen]);
-
   return (
     <Modal
       visible={mounted}
@@ -95,21 +106,18 @@ function DrawerOverlay() {
       onRequestClose={close}
     >
       <Animated.View style={{ flex: 1 }}>
-        {/* Dark overlay */}
+        {/* Qorong'i qatlam - zIndex: 1 */}
         <Animated.View
           pointerEvents={isOpen ? "auto" : "none"}
           style={[
             StyleSheet.absoluteFill,
-            {
-              backgroundColor: "rgba(0,0,0,0.5)",
-              opacity: overlayOpacity,
-            },
+            { backgroundColor: "rgba(0,0,0,0.5)", opacity: overlayOpacity, zIndex: 1 },
           ]}
         >
           <Pressable style={{ flex: 1 }} onPress={close} />
         </Animated.View>
 
-        {/* Sidebar panel */}
+        {/* Menyu qatlami (Ustiga chiqishi uchun zIndex: 10 berildi) */}
         <Animated.View
           style={{
             position: "absolute",
@@ -123,6 +131,7 @@ function DrawerOverlay() {
             shadowOpacity: 0.25,
             shadowRadius: 8,
             elevation: 10,
+            zIndex: 10, // <--- SHU JUDA MUHIM
           }}
         >
           <DrawerSidebar onClose={close} />
@@ -190,7 +199,6 @@ function GlobalTabsHeader(props: any) {
       borderBottomColor="$borderColor"
     >
       <XStack h={56} ai="center" px="$4" gap="$3">
-        {/* Asosiy page da menu burger, boshqa page larda back button */}
         {isMainPage ? (
           <Pressable onPress={openDrawer} hitSlop={12}>
             <Menu size={24} color="$gray11" />
@@ -215,7 +223,6 @@ function GlobalTabsHeader(props: any) {
           </Pressable>
         ) : null}
 
-        {/* Title — markazda */}
         <Text
           fontSize={17}
           fontWeight="600"
@@ -227,7 +234,6 @@ function GlobalTabsHeader(props: any) {
           {props.options.title}
         </Text>
 
-        {/* Right actions */}
         <XStack ai="center" gap="$3" flexShrink={0}>
           <Pressable
             onPress={() => router.push("/tabs/friends/requests")}
@@ -280,14 +286,12 @@ export default function TabLayout() {
 
   return (
     <View flex={1} position="relative">
-      {/* Tabs Navigator */}
       <Tabs
         screenOptions={{
           header: (props) => <GlobalTabsHeader {...props} />,
-          tabBarStyle: { display: "none" }, // Default tab barni yashiramiz
+          tabBarStyle: { display: "none" },
         }}
       >
-        {/* Home & Settings tabs */}
         <Tabs.Screen
           name="index"
           options={{
@@ -308,16 +312,10 @@ export default function TabLayout() {
             ),
           }}
         />
-
         <Tabs.Screen
           name="profile"
-          options={{
-            href: null,
-            title: profileTitle,
-          }}
+          options={{ href: null, title: profileTitle }}
         />
-
-        {/* Info pages (sidebar) */}
         <Tabs.Screen
           name="about"
           options={{ href: null, title: t("navigation.about", "About") }}
@@ -328,20 +326,12 @@ export default function TabLayout() {
         />
         <Tabs.Screen
           name="public-offer"
-          options={{
-            href: null,
-            title: t("navigation.publicOffer", "Public offer"),
-          }}
+          options={{ href: null, title: t("navigation.publicOffer", "Public offer") }}
         />
         <Tabs.Screen
           name="privacy-policy"
-          options={{
-            href: null,
-            title: t("navigation.privacy", "Privacy policy"),
-          }}
+          options={{ href: null, title: t("navigation.privacy", "Privacy policy") }}
         />
-
-        {/* Friends stack */}
         <Tabs.Screen
           name="friends/index"
           options={{ href: null, title: t("friends.title", "Friends") }}
@@ -354,8 +344,6 @@ export default function TabLayout() {
           name="friends/requests"
           options={{ href: null, title: t("friends.requests", "Requests") }}
         />
-
-        {/* Groups */}
         <Tabs.Screen
           name="groups/index"
           options={{ href: null, title: groupsTitle }}
@@ -368,7 +356,6 @@ export default function TabLayout() {
           name="groups/[groupId]"
           options={{ href: null, title: groupDetailsTitle }}
         />
-
         <Tabs.Screen
           name="scan-invite"
           options={{ href: null, title: scanInviteTitle }}
@@ -381,7 +368,6 @@ export default function TabLayout() {
           name="groups/invite"
           options={{ href: null, title: groupQrTitle }}
         />
-
         <Tabs.Screen
           name="scan-receipt"
           options={{ href: null, title: scanReceiptTitle }}
@@ -408,7 +394,6 @@ export default function TabLayout() {
         />
       </Tabs>
 
-      {/* Custom Tab Bar — pastda, safe area ichida */}
       <View
         position="absolute"
         bottom={0}
@@ -423,7 +408,6 @@ export default function TabLayout() {
         <CustomTabBar />
       </View>
 
-      {/* Drawer overlay — eng ustida */}
       <DrawerOverlay />
     </View>
   );

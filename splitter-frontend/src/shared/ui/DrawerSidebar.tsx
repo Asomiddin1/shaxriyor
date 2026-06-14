@@ -1,6 +1,5 @@
-// src/shared/ui/DrawerSidebar.tsx
 import React from "react";
-import { Pressable, ScrollView, Platform, Share } from "react-native";
+import { ScrollView, Platform, Share } from "react-native";
 import { YStack, XStack, Text, View, Separator } from "tamagui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -18,13 +17,14 @@ import {
   HelpCircle,
   FileText,
   ShieldCheck,
-  Moon, // <-- Moon ikonkasini import qildik
+  Moon,
   Sun,
 } from "@tamagui/lucide-icons";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { useAppStore } from "@/shared/lib/stores/app-store";
+import { useDrawerStore } from "@/shared/lib/stores/drawer-store";
 import UserAvatar from "@/shared/ui/UserAvatar";
 
 interface DrawerMenuItem {
@@ -46,6 +46,7 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, logout, theme, toggleTheme } = useAppStore();
+  const navigateTo = useDrawerStore((s) => s.navigateTo);
 
   const displayName = user?.username || t("profile.labels.guest", "Guest");
   const userEmail = user?.email || "";
@@ -60,7 +61,6 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
     } catch (e) {}
   };
 
-  // Tungi rejimni o'zgartirish funksiyasi
   const handleToggleDarkMode = () => {
     toggleTheme();
   };
@@ -73,7 +73,6 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
       path: "/tabs/profile",
       section: "secondary",
     },
-    // Dark mode tugmasi Settings tagidan qo'shildi
     {
       key: "dark-mode",
       label:
@@ -127,10 +126,8 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
   const infoItems = menuItems.filter((i) => i.section === "info");
 
   const handleNavigate = (path: string) => {
+    navigateTo(path);
     onClose();
-    setTimeout(() => {
-      router.push(path as any);
-    }, 150);
   };
 
   const handleLogout = async () => {
@@ -149,24 +146,25 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
       : () => handleNavigate(item.path!);
 
     return (
-      <Pressable key={item.key} onPress={onPress}>
-        <XStack
-          ai="center"
-          gap="$3"
-          px="$3"
-          py="$3"
-          br="$4"
-          hoverStyle={{ bg: "$gray3" }}
-          pressStyle={{ bg: "$gray3" }}
-        >
-          <View w={36} h={36} br={12} ai="center" jc="center" bg="$gray3">
-            <Icon size={18} color="$gray11" />
-          </View>
-          <Text fontSize={15} fontWeight="500" color="$color12">
-            {item.label}
-          </Text>
-        </XStack>
-      </Pressable>
+      <XStack
+        key={item.key}
+        onPress={onPress}
+        ai="center"
+        gap="$3"
+        px="$3"
+        py="$3"
+        br="$4"
+        hoverStyle={{ bg: "$gray3" }}
+        pressStyle={{ bg: "$gray3" }}
+        cursor="pointer"
+      >
+        <View w={36} h={36} br={12} ai="center" jc="center" bg="$gray3">
+          <Icon size={18} color="$gray11" />
+        </View>
+        <Text fontSize={15} fontWeight="500" color="$color12">
+          {item.label}
+        </Text>
+      </XStack>
     );
   };
 
@@ -177,7 +175,6 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
       pt={insets.top + 8}
       pb={Platform.OS === "ios" ? insets.bottom : 16}
     >
-      {/* Header - User info (mt="$4" orqali sal pastga tushirildi) */}
       <YStack px="$4" pb="$4" mt="$4">
         <XStack ai="center" jc="space-between" mb="$3">
           <XStack ai="center" gap="$3">
@@ -198,21 +195,20 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
               ) : null}
             </YStack>
           </XStack>
-          <Pressable onPress={onClose} hitSlop={12}>
+          <XStack onPress={onClose} hitSlop={12} p="$2" cursor="pointer">
             <X size={22} color="$gray9" />
-          </Pressable>
+          </XStack>
         </XStack>
       </YStack>
 
       <Separator borderColor="$borderColor" />
 
-      {/* Scrollable Menu */}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingVertical: 12 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled" // <--- SHU JUDA MUHIM
       >
-        {/* Main navigation */}
         {mainItems.length > 0 && (
           <>
             <YStack px="$3" gap="$1">
@@ -222,40 +218,37 @@ export function DrawerSidebar({ onClose }: DrawerSidebarProps) {
           </>
         )}
 
-        {/* Secondary navigation */}
         <YStack px="$3" gap="$1">
           {secondaryItems.map(renderItem)}
         </YStack>
 
         <Separator borderColor="$borderColor" my="$3" mx="$4" />
 
-        {/* Info navigation */}
         <YStack px="$3" gap="$1">
           {infoItems.map(renderItem)}
         </YStack>
 
         <Separator borderColor="$borderColor" my="$3" mx="$4" />
 
-        {/* Logout — oxirgi element */}
         <YStack px="$3">
-          <Pressable onPress={handleLogout}>
-            <XStack
-              ai="center"
-              gap="$3"
-              px="$3"
-              py="$3"
-              br="$4"
-              hoverStyle={{ bg: "$red2" }}
-              pressStyle={{ bg: "$red2" }}
-            >
-              <View w={36} h={36} br={12} ai="center" jc="center" bg="$red3">
-                <LogOut size={18} color="$red10" />
-              </View>
-              <Text fontSize={15} fontWeight="500" color="$red10">
-                {t("profile.actions.logout", "Log out")}
-              </Text>
-            </XStack>
-          </Pressable>
+          <XStack
+            onPress={handleLogout}
+            ai="center"
+            gap="$3"
+            px="$3"
+            py="$3"
+            br="$4"
+            hoverStyle={{ bg: "$red2" }}
+            pressStyle={{ bg: "$red2" }}
+            cursor="pointer"
+          >
+            <View w={36} h={36} br={12} ai="center" jc="center" bg="$red3">
+              <LogOut size={18} color="$red10" />
+            </View>
+            <Text fontSize={15} fontWeight="500" color="$red10">
+              {t("profile.actions.logout", "Log out")}
+            </Text>
+          </XStack>
         </YStack>
       </ScrollView>
     </YStack>
